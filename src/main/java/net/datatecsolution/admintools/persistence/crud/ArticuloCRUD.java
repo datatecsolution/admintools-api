@@ -25,6 +25,8 @@ public interface ArticuloCRUD extends CrudRepository<Articulo, Integer> {
             " IFNULL( f_can_saldo_kardex ( articulo.codigo_articulo, 1 ), 0 ) AS existencia from articulo where articulo like ? AND articulo.estado = 1",nativeQuery = true)
     List<Articulo> getArticuloDescripcion(String nombre);
 
+    List<Articulo> findByArticuloContaining(String descripcion);
+
 //    @Query(value = "SELECT a.codigo_articulo, " +
 //            "a.articulo, " +
 //            "a.codigo_marca, " +

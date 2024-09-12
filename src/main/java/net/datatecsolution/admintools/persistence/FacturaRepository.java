@@ -14,6 +14,8 @@ import net.datatecsolution.admintools.persistence.mapper.OrderMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -33,7 +35,7 @@ public class FacturaRepository implements OrderRepository {
     private OrderMapper mapper;
     @Override
     public List<Order> getAll() {
-        List<Factura> facturas = (List<Factura>) facturaCRUD.findAll();
+        List<Factura> facturas = (List<Factura>) facturaCRUD.getAllByOrderByFechaDesc();
         return mapper.toOrders(facturas);
     }
 

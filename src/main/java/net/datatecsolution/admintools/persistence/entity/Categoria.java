@@ -13,6 +13,8 @@ public class Categoria {
     private Integer id;
     @Column(name = "descripcion")
     private String descripcion;
+
+    @Column(name = "observacion")
     private String observacion;
 
     @OneToMany(mappedBy = "categoria")

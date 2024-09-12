@@ -11,5 +11,9 @@ public interface FacturaCRUD extends CrudRepository<Factura,Integer> {
 
     List<Factura> findByClienteIdOrderByFechaAsc(int idCliente);
 
+    List<Factura> getAllByOrderByFechaDesc();
+    List<Factura> findByFechaOrderByFechaDesc(LocalDate fecha);
+
+
    // List<Factura> findByFechaBetweenAAndEstado(LocalDate fecha,LocalDate fecha2,String estado);
 }

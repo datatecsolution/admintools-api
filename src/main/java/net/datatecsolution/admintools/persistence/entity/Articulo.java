@@ -1,11 +1,13 @@
 package net.datatecsolution.admintools.persistence.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.Immutable;
 
 import java.util.List;
 
 @Entity
-@Table(name = "articulo")
+@Table(name = "articulo_view")
+@Immutable
 public class Articulo {
     @Id
     @Column(name = "codigo_articulo")
@@ -30,7 +32,7 @@ public class Articulo {
     @Column(name = "codigo_marca")
     private Integer idCategoria;
 
-    @Transient
+    @Column(name = "existencia")
     private Double existencia;
 
     @ManyToOne

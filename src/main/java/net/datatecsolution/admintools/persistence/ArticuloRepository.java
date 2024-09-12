@@ -45,7 +45,9 @@ public class ArticuloRepository implements ProductRepository {
         logger.debug("Ejecutando consulta para obtener artículo con descripción: {}", description);
 
         //List<Articulo> articulos = articuloCRUD.findByArticuloLikeOrderByArticuloAsc("%"+description+"%");
-        List<Articulo> articulos = articuloCRUD.getArticuloDescripcion("%"+description+"%");
+        //List<Articulo> articulos = articuloCRUD.findByArticuloContaining("%"+description+"%");
+
+        List<Articulo> articulos = articuloCRUD.findByArticuloContaining(description);
         for ( Articulo articulo : articulos ) {
             logger.debug("Resultado: CodigoArticulo={}, Existencia={}",
                     articulo.getArticuloId(), articulo.getExistencia());
