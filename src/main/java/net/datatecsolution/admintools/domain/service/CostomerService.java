@@ -16,7 +16,7 @@ public class CostomerService {
     public List<Costomer> getdAll() {
         return costomerRepository.getAll();
     }
-    public Optional<List<Costomer>> getdByName(String name) {
-        return costomerRepository.getByName(name);
+    public Optional<List<Costomer>> getdByName(String name, String user) {
+        return costomerRepository.getByNameAndUser(name, user);
     }
 }

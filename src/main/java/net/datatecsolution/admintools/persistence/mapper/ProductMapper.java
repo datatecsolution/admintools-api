@@ -23,6 +23,7 @@ public interface ProductMapper {
             @Mapping(source = "categoria", target = "category"),
             @Mapping(source = "imp", target = "tax"),
             @Mapping(source = "precioArticulos", target = "prices"),
+            //@Mapping(source = "preciosArticulo", target = "prics"),
 
 
     })

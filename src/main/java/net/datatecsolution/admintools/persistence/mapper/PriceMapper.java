@@ -9,13 +9,14 @@ import org.mapstruct.Mappings;
 
 import java.util.List;
 
-@Mapper(componentModel = "spring")
+@Mapper(componentModel = "spring" , uses = {UserPriceMapper.class})
 public interface PriceMapper {
 
     @Mappings({
             @Mapping(source = "codigoPrecio", target = "priceId"),
             @Mapping(source = "descripcion", target = "description"),
-          //  @Mapping(source = "precioArticulos", target = "priceProducts"),
+            //@Mapping(source = "precioArticulos", target = "priceProducts"),
+            @Mapping(source = "usuarioPrecios", target = "userPrices"),
     })
     Price toPrice(Precio precio);
 

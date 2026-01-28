@@ -7,5 +7,5 @@ import java.util.Optional;
 
 public interface CostomerRepository {
     List<Costomer> getAll();
-    Optional<List<Costomer>> getByName(String name);
+    Optional<List<Costomer>> getByNameAndUser(String name, String user);
 }

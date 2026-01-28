@@ -63,4 +63,12 @@ public class ProductService {
             return true;
         }).orElse(false);
     }
+
+
+    public Optional<List<Product>> getProductsPrecioUser(String description, String user) {
+
+        Optional <List<Product>>  articulos = productRepository.getByDescriptionAndUser(description,user);
+
+        return articulos;
+    }
 }

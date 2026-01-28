@@ -34,7 +34,10 @@ public class CustomUserDetailsService implements UserDetailsService {
     @Override
     @Transactional
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        //Optional<User> user = userRepository.findByUsername(username);
+//        Optional<User> user = userRepository.findByUserDominio(username);
+//
+//        return userMapper.toUsuario(user.get());//orElseThrow(() -> new UsernameNotFoundException("User not found with username: " + username));
+
 
         //se busca el usuario por el userName
         Optional<Usuario> user = userRepository.findByUsername(username);

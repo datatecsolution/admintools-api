@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import org.hibernate.annotations.Immutable;
 
 import java.util.List;
+import java.util.Set;
 
 @Entity
 @Table(name = "articulo_view")
@@ -61,6 +62,15 @@ public class Articulo {
 
     @Transient
     private Double precioCompra;
+
+
+    @ManyToMany
+    @JoinTable(
+            name = "precios_articulos",
+            joinColumns = @JoinColumn(name = "codigo_articulo"),
+            inverseJoinColumns = @JoinColumn(name = "codigo_precio")
+    )
+    private Set<Precio> preciosArticulo;
 
 
     /*
@@ -267,5 +277,12 @@ public class Articulo {
 
     public void setExistencia(Double existencia) {
         this.existencia = existencia;
+    }
+    public Set<Precio> getPreciosArticulo() {
+        return preciosArticulo;
+    }
+
+    public void setPreciosArticulo(Set<Precio> preciosArticulo) {
+        this.preciosArticulo = preciosArticulo;
     }
 }

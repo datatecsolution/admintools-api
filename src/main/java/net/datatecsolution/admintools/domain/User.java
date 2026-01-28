@@ -1,5 +1,7 @@
 package net.datatecsolution.admintools.domain;
 
+import java.util.List;
+
 public class User {
 
     public Integer getUserId() {
@@ -25,9 +27,16 @@ public class User {
     public void setPassword(String password) {
         this.password = password;
     }
+    public List<UserPrice> getUserPrices() {
+        return userPrices;
+    }
+
+    public void setUserPrices(List<UserPrice> userPrices) {
+        this.userPrices = userPrices;
+    }
 
     private Integer userId;
-
     private String username;
     private String password;
+    private List<UserPrice> userPrices;
 }

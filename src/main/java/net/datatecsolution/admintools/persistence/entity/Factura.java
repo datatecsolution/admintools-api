@@ -1,5 +1,6 @@
 package net.datatecsolution.admintools.persistence.entity;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
@@ -57,9 +58,9 @@ public class Factura {
 	@Transient
 	private Integer codigo;
 
-	@Column(name = "estado_factura")
+	@Column(name = "estado")
 	@JsonIgnore
-	private String estado;
+	private Integer estado;
 
 	@Column(name = "isvOtros")
 	private BigDecimal isvOtros=new BigDecimal(0);
@@ -90,6 +91,7 @@ public class Factura {
 	@Column(name = "codigo_vendedor")
 	private Integer vendedorCod;
 
+
 	@Transient
 	private BigDecimal totalOtrosImpuesto;
 
@@ -110,7 +112,7 @@ public class Factura {
 	@Transient
 	private BigDecimal cobroTarjeta;
 
-	@Transient
+	@Column(name = "observacion")
 	private String observacion="";
 
 	@Transient
@@ -362,11 +364,11 @@ public class Factura {
 		this.codigo = codigo;
 	}
 
-	public String getEstado() {
+	public Integer getEstado() {
 		return estado;
 	}
 
-	public void setEstado(String estado) {
+	public void setEstado(Integer estado) {
 		this.estado = estado;
 	}
 

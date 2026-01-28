@@ -22,11 +22,13 @@ public class PrecioArticulo {
 	@ManyToOne
 	@JoinColumn(name = "codigo_precio", insertable = false, updatable = false)
 	private Precio pre;
+
 	@Column(name = "precio_articulo")
 	private BigDecimal precioArticulo;
 
 	@Column(name = "codigo_articulo")
 	private Integer articuloId;
+
 	@Column(name = "codigo_precio")
 	private Integer precioId;
 

@@ -21,6 +21,18 @@ public class Precio {
    @JsonIgnore
    private List<PrecioArticulo> precioArticulos;
 
+   @OneToMany(mappedBy = "prec")
+   @JsonIgnore
+   private List<UsuarioPrecio> usuarioPrecios;
+
+
+    public List<UsuarioPrecio> getUsuarioPrecios() {
+        return usuarioPrecios;
+    }
+
+    public void setUsuarioPrecios(List<UsuarioPrecio> usuarioPrecios) {
+        this.usuarioPrecios = usuarioPrecios;
+    }
 
     public Integer getCodigoPrecio() {
         return codigoPrecio;

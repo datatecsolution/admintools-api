@@ -26,8 +26,9 @@ public class ClienteRepository implements CostomerRepository {
     }
 
     @Override
-    public Optional<List<Costomer>> getByName(String name) {
-        List<Cliente> clientes= clienteCRUD.findByNombreContainingOrderByNombreAsc(name);
+    public Optional<List<Costomer>> getByNameAndUser(String name, String user) {
+       // List<Cliente> clientes= clienteCRUD.findByNombreContainingOrderByNombreAsc(name);
+        List<Cliente> clientes= clienteCRUD.findByNombreVendedorOrderByNombreAsc(name, user);
         return Optional.of(mapper.toCostomers(clientes));
     }
 }

@@ -1,12 +1,11 @@
 package net.datatecsolution.admintools.persistence.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 @Entity
 @Table(name = "usuario")
@@ -26,6 +25,9 @@ public class Usuario implements UserDetails {
 
     @OneToMany(mappedBy = "usuario", cascade = CascadeType.ALL)
     private Set<Authority> authorities = new HashSet<>();
+
+    @OneToMany(mappedBy = "use")
+    private List<UsuarioPrecio> precios;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -83,6 +85,13 @@ public class Usuario implements UserDetails {
 
     public void setContraseniaUsuario(String contraseniaUsuario) {
         this.contraseniaUsuario = contraseniaUsuario;
+    }
+    public List<UsuarioPrecio> getPrecios() {
+        return precios;
+    }
+
+    public void setPrecios(List<UsuarioPrecio> precios) {
+        this.precios = precios;
     }
 
 

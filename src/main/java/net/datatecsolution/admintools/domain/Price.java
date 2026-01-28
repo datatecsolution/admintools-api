@@ -5,9 +5,21 @@ import java.util.List;
 public class Price {
 
     private Integer priceId;
+
     private String description;
 
+    private List<UserPrice> userPrices;
+
     private List<PriceProduct> priceProducts;
+
+    public List<UserPrice> getUserPrices() {
+        return userPrices;
+    }
+
+    public void setUserPrices(List<UserPrice> userPrices) {
+        this.userPrices = userPrices;
+    }
+
 
     public List<PriceProduct> getPriceProducts() {
         return priceProducts;

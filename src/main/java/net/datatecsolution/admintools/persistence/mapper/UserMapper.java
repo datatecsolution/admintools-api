@@ -9,12 +9,12 @@ import org.mapstruct.Mappings;
 
 import java.util.List;
 
-@Mapper(componentModel = "spring")
+@Mapper(componentModel = "spring", uses = {UserPriceMapper.class, PriceMapper.class})
 public interface UserMapper {
     @Mappings({
             @Mapping(source = "idUsuario", target = "userId"),
             @Mapping(source = "nombreUsuario", target = "username"),
-            @Mapping(source = "contraseniaUsuario", target = "password")
+            @Mapping(source = "precios", target = "userPrices")
     })
     User toUser(Usuario usuario);
 

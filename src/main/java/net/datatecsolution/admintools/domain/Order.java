@@ -1,8 +1,13 @@
 package net.datatecsolution.admintools.domain;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 
 public class Order {
     public Integer getOrderId() {
@@ -69,11 +74,11 @@ public class Order {
         this.total = total;
     }
 
-    public String getActive() {
+    public Integer getActive() {
         return active;
     }
 
-    public void setActive(String active) {
+    public void setActive(Integer active) {
         this.active = active;
     }
 
@@ -129,9 +134,28 @@ public class Order {
         this.sellerId = sellerId;
     }
 
+    // Método para formatear la fecha antes de enviarla al frontend
+    @JsonProperty("date")
+    public String getFormattedDate() {
+        // Definir el patrón y el Locale para español de Honduras
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("EEEE d, MMMM", new Locale("es", "HN"));
+
+        // Devolver la fecha formateada
+        return date != null ? date.format(formatter) : null;
+    }
+
+    public String getObser() {
+        return obser;
+    }
+
+    public void setObser(String obser) {
+        this.obser = obser;
+    }
+
 
 
     private Integer orderId;
+   // @JsonFormat(pattern = "EEEE d, MMMM", locale = "es_HN")
     private LocalDate date;
     private BigDecimal subTotalExcento;
     private BigDecimal subTotal15;
@@ -139,10 +163,11 @@ public class Order {
     private BigDecimal subTotal;
     private BigDecimal totalTax;
     private BigDecimal total;
-    private String active;
+    private Integer active;
     private BigDecimal isvOther;
     private BigDecimal totalTaxs18;
     private String user;
+    private String obser;
     private Integer costomerId;
     private Costomer costomer;
     private Integer sellerId;

@@ -17,4 +17,6 @@ public interface ProductRepository {
     Product save(Product product);
 
     void delete(int productId);
+
+    Optional<List<Product>> getByDescriptionAndUser(String description, String user);
 }

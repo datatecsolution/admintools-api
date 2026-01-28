@@ -2,6 +2,7 @@ package net.datatecsolution.admintools.domain;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 
 public class Product {
     private Integer productId;
@@ -15,6 +16,8 @@ public class Product {
     private Double stock;
     private Tax tax;
     private List<PriceProduct> prices;
+
+    private Set<Price> prics;
 
     public Integer getProductId() {
         return productId;
@@ -93,5 +96,12 @@ public class Product {
 
     public void setStock(Double stock) {
         this.stock = stock;
+    }
+    public Set<Price> getPrics() {
+        return prics;
+    }
+
+    public void setPrics(Set<Price> prics) {
+        this.prics = prics;
     }
 }

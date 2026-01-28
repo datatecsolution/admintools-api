@@ -23,6 +23,7 @@ public interface OrderMapper {
             @Mapping(source = "vendedorCod", target = "sellerId"),
             @Mapping(source = "cliente", target = "costomer"),
             @Mapping(source = "usuario", target = "user"),
+            @Mapping(source = "observacion", target = "obser"),
             @Mapping(source = "detalles", target = "details")
 
     })

@@ -1,5 +1,6 @@
 package net.datatecsolution.admintools.persistence;
 
+import net.datatecsolution.admintools.domain.User;
 import net.datatecsolution.admintools.domain.repository.UserRepository;
 import net.datatecsolution.admintools.persistence.crud.UsuarioCRUD;
 import net.datatecsolution.admintools.persistence.entity.Usuario;
@@ -8,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -20,6 +22,16 @@ public class UsuarioRepository implements UserRepository {
     private UserMapper userMapper;
 
     @Override
+    public Optional<User> findByUserDominio(String username) {
+        Optional<Usuario> usuarioOptional = usuarioCRUD.findByNombreUsuario(username);
+        if (usuarioOptional.isPresent()) {
+            return Optional.of(userMapper.toUser(usuarioOptional.get()));
+        } else {
+            throw new UsernameNotFoundException("Usuario no encontrado: " + username);
+        }
+    }
+
+    @Override
     public Optional<Usuario> findByUsername(String username) {
 
         Optional<Usuario> usuarioOptional = usuarioCRUD.findByNombreUsuario(username);
@@ -28,6 +40,12 @@ public class UsuarioRepository implements UserRepository {
         } else {
             throw new UsernameNotFoundException("Usuario no encontrado: " + username);
         }
+    }
+
+    @Override
+    public List<User> getAll() {
+        List<Usuario> users = (List<Usuario>) usuarioCRUD.findAll();
+        return userMapper.toUsers(users);
     }
 
 //    public Usuario findByNombreUsuario(String username) {
