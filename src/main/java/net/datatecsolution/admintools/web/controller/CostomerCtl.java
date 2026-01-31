@@ -21,11 +21,10 @@ public class CostomerCtl {
     // return new ResponseEntity<>(costomerService.getdAll(), HttpStatus.OK);
     // }
     @GetMapping("name/{name}")
-    public ResponseEntity<List<Costomer>> getByNome(@PathVariable String name, @RequestParam String user) {
-
-        if (name == null || name.isEmpty() || user == null || user.isEmpty()) {
-            String errorMessage = "Error: Ambos parámetros 'busqueda' y 'usuario' son requeridos.";
-            new ResponseEntity<>(errorMessage, HttpStatus.BAD_REQUEST);
+    public ResponseEntity<List<Costomer>> getByNome(@PathVariable String name, java.security.Principal principal) {
+        String user = principal.getName();
+        if (name == null || name.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         return costomerService.getdByName(name, user)
                 .map(costomer -> new ResponseEntity<>(costomer, HttpStatus.OK))

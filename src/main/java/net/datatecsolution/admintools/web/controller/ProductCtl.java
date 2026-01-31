@@ -31,12 +31,10 @@ public class ProductCtl {
 
     @GetMapping("/description/{description}")
     public ResponseEntity<List<Product>> getByDescription(@PathVariable("description") String description,
-            @RequestParam String user) {
-        // System.out.println("Descripcion : " + description);
-        // System.out.println("user: " + user);
-        if (description == null || description.isEmpty() || user == null || user.isEmpty()) {
-            String errorMessage = "Error: Ambos parámetros 'busqueda' y 'usuario' son requeridos.";
-            new ResponseEntity<>(errorMessage, HttpStatus.BAD_REQUEST);
+            java.security.Principal principal) {
+        String user = principal.getName();
+        if (description == null || description.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         return productService.getProductsPrecioUser(description, user)
                 .map(product -> new ResponseEntity<>(product, HttpStatus.OK))
@@ -52,11 +50,10 @@ public class ProductCtl {
 
     @GetMapping("/despriciouser/{description}")
     public ResponseEntity<List<Product>> getByDesPrecioUser(@PathVariable("description") String description,
-            @RequestParam String user) {
-
-        if (description == null || description.isEmpty() || user == null || user.isEmpty()) {
-            String errorMessage = "Error: Ambos parámetros 'busqueda' y 'usuario' son requeridos.";
-            new ResponseEntity<>(errorMessage, HttpStatus.BAD_REQUEST);
+            java.security.Principal principal) {
+        String user = principal.getName();
+        if (description == null || description.isEmpty()) {
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         return productService.getProductsPrecioUser(description, user)
                 .map(product -> new ResponseEntity<>(product, HttpStatus.OK))

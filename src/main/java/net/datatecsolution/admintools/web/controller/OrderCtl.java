@@ -30,16 +30,11 @@ public class OrderCtl {
     }
 
     @PostMapping("/save")
-    public ResponseEntity<Object> save(@RequestBody Order order) {
-
-        if (order.getUser() == null || order.getUser().isEmpty()) {
-            String errorMessage = "Error:'usuario' es requerido.";
-            new ResponseEntity<>(errorMessage, HttpStatus.BAD_REQUEST);
-        }
+    public ResponseEntity<Object> save(@RequestBody Order order, java.security.Principal principal) {
+        String user = principal.getName();
 
         try {
-
-            Order savedOrder = orderService.save(order, order.getUser());
+            Order savedOrder = orderService.save(order, user);
             return new ResponseEntity<>(savedOrder, HttpStatus.CREATED);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -49,23 +44,15 @@ public class OrderCtl {
     }
 
     @GetMapping("/today")
-    public ResponseEntity<List<Order>> getByNow(@RequestParam String user) {
-        System.out.println("user: " + user);
-        if (user == null || user.isEmpty()) {
-            String errorMessage = "Error:'usuario' es requerido.";
-            new ResponseEntity<>(errorMessage, HttpStatus.BAD_REQUEST);
-        }
+    public ResponseEntity<List<Order>> getByNow(java.security.Principal principal) {
+        String user = principal.getName();
         return new ResponseEntity<>(orderService.findByToday(user), HttpStatus.OK);
     }
 
     @DeleteMapping("/delete/{id}")
-    public ResponseEntity delete(@PathVariable("id") int orderId, @RequestParam String user) {
+    public ResponseEntity delete(@PathVariable("id") int orderId, java.security.Principal principal) {
         // se tiene que enviar el usuario para verificar que la orden le pertenece
-        System.out.println("user: " + user);
-        if (user == null || user.isEmpty()) {
-            String errorMessage = "Error:'usuario' es requerido.";
-            new ResponseEntity<>(errorMessage, HttpStatus.BAD_REQUEST);
-        }
+        String user = principal.getName();
 
         if (orderService.delete(orderId, user)) {
             return new ResponseEntity(HttpStatus.OK);

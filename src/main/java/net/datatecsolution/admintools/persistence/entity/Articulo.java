@@ -47,7 +47,7 @@ public class Articulo {
     @OneToMany(mappedBy = "art")
     private List<CodBarra> codigos;
 
-    @OneToMany(mappedBy = "art")
+    @OneToMany(mappedBy = "art", fetch = FetchType.EAGER)
     private List<PrecioArticulo> precioArticulos;
 
     @OneToMany(mappedBy = "articulo")
@@ -58,86 +58,84 @@ public class Articulo {
     @Transient
     private String codigoBarra = "";
 
-
-
     @Transient
     private Double precioCompra;
 
-
     @ManyToMany
-    @JoinTable(
-            name = "precios_articulos",
-            joinColumns = @JoinColumn(name = "codigo_articulo"),
-            inverseJoinColumns = @JoinColumn(name = "codigo_precio")
-    )
+    @JoinTable(name = "precios_articulos", joinColumns = @JoinColumn(name = "codigo_articulo"), inverseJoinColumns = @JoinColumn(name = "codigo_precio"))
     private Set<Precio> preciosArticulo;
 
-
     /*
-    public Set<PrecioArticulo> getPrecioArticulos() {
-        return precioArticulos;
-    }
-
-    public void setPrecioArticulos(Set<PrecioArticulo> precioArticulos) {
-        this.precioArticulos = precioArticulos;
-    }
-
+     * public Set<PrecioArticulo> getPrecioArticulos() {
+     * return precioArticulos;
+     * }
+     * 
+     * public void setPrecioArticulos(Set<PrecioArticulo> precioArticulos) {
+     * this.precioArticulos = precioArticulos;
+     * }
+     * 
      */
 
-/*
-    public List<PrecioArticulo> getPreciosVenta() {
-        return preciosVenta;
-    }
-
-    public void setPreciosVenta(List<PrecioArticulo> precios) {
-        preciosVenta = precios;
-    }
-
-    public void netPrecio() {
-        posicionPrecio++;
-        if (posicionPrecio == preciosVenta.size() - 1) {
-            precioVenta = preciosVenta.get(preciosVenta.size() - 1).getPrecio().setScale(2, RoundingMode.HALF_EVEN).doubleValue();
-            //posicionPrecio--;
-        } else {
-            if (posicionPrecio >= preciosVenta.size()) {
-                posicionPrecio = preciosVenta.size() - 1;
-                precioVenta = preciosVenta.get(posicionPrecio).getPrecio().setScale(2, RoundingMode.HALF_EVEN).doubleValue();
-            } else
-                precioVenta = preciosVenta.get(posicionPrecio).getPrecio().setScale(2, RoundingMode.HALF_EVEN).doubleValue();
-        }
-    }
-
-    public void setPrecio(PrecioArticulo pr) {
-        int index = -1;
-
-        for (int c = 0; c < preciosVenta.size(); c++) {
-
-            if (preciosVenta.get(c).getCodigoPrecio() == pr.getCodigoPrecio()) {
-
-                index = c;
-            }
-        }
-        if (index != -1)
-            precioVenta = preciosVenta.get(index).getPrecio().setScale(2, RoundingMode.HALF_EVEN).doubleValue();
-    }
-
-    public void lastPrecio() {
-        posicionPrecio--;
-        if (posicionPrecio <= 0) {
-            precioVenta = preciosVenta.get(0).getPrecio().setScale(2, RoundingMode.HALF_EVEN).doubleValue();
-            posicionPrecio = 0;
-        } else {
-            //posicionPrecio--;
-            precioVenta = preciosVenta.get(posicionPrecio).getPrecio().setScale(2, RoundingMode.HALF_EVEN).doubleValue();
-        }
-    }
-
- */
+    /*
+     * public List<PrecioArticulo> getPreciosVenta() {
+     * return preciosVenta;
+     * }
+     * 
+     * public void setPreciosVenta(List<PrecioArticulo> precios) {
+     * preciosVenta = precios;
+     * }
+     * 
+     * public void netPrecio() {
+     * posicionPrecio++;
+     * if (posicionPrecio == preciosVenta.size() - 1) {
+     * precioVenta = preciosVenta.get(preciosVenta.size() -
+     * 1).getPrecio().setScale(2, RoundingMode.HALF_EVEN).doubleValue();
+     * //posicionPrecio--;
+     * } else {
+     * if (posicionPrecio >= preciosVenta.size()) {
+     * posicionPrecio = preciosVenta.size() - 1;
+     * precioVenta = preciosVenta.get(posicionPrecio).getPrecio().setScale(2,
+     * RoundingMode.HALF_EVEN).doubleValue();
+     * } else
+     * precioVenta = preciosVenta.get(posicionPrecio).getPrecio().setScale(2,
+     * RoundingMode.HALF_EVEN).doubleValue();
+     * }
+     * }
+     * 
+     * public void setPrecio(PrecioArticulo pr) {
+     * int index = -1;
+     * 
+     * for (int c = 0; c < preciosVenta.size(); c++) {
+     * 
+     * if (preciosVenta.get(c).getCodigoPrecio() == pr.getCodigoPrecio()) {
+     * 
+     * index = c;
+     * }
+     * }
+     * if (index != -1)
+     * precioVenta = preciosVenta.get(index).getPrecio().setScale(2,
+     * RoundingMode.HALF_EVEN).doubleValue();
+     * }
+     * 
+     * public void lastPrecio() {
+     * posicionPrecio--;
+     * if (posicionPrecio <= 0) {
+     * precioVenta = preciosVenta.get(0).getPrecio().setScale(2,
+     * RoundingMode.HALF_EVEN).doubleValue();
+     * posicionPrecio = 0;
+     * } else {
+     * //posicionPrecio--;
+     * precioVenta = preciosVenta.get(posicionPrecio).getPrecio().setScale(2,
+     * RoundingMode.HALF_EVEN).doubleValue();
+     * }
+     * }
+     * 
+     */
 
     // Constructor
     public Articulo(Integer codigoArticulo, String articulo, Integer codigoMarca, Integer codArticulo,
-                       Integer codigoImpuesto, Double precioArticulo, Integer tipoArticulo,
-                       Boolean estado, Double existencia) {
+            Integer codigoImpuesto, Double precioArticulo, Integer tipoArticulo,
+            Boolean estado, Double existencia) {
         this.articuloId = codigoArticulo;
         this.articulo = articulo;
         this.codigoImpuesto = codigoImpuesto;
@@ -254,7 +252,6 @@ public class Articulo {
         this.codigoBarra = codigoBarra;
     }
 
-
     public Double getPrecioCompra() {
         return precioCompra;
     }
@@ -278,6 +275,7 @@ public class Articulo {
     public void setExistencia(Double existencia) {
         this.existencia = existencia;
     }
+
     public Set<Precio> getPreciosArticulo() {
         return preciosArticulo;
     }

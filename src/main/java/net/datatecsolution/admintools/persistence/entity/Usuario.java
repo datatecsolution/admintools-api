@@ -11,19 +11,18 @@ import java.util.*;
 @Table(name = "usuario")
 public class Usuario implements UserDetails {
 
-
     @Id
     @Column(name = "id")
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long idUsuario;
 
-    @Column(name = "usuario",unique = true, nullable = false)
+    @Column(name = "usuario", unique = true, nullable = false)
     private String nombreUsuario;
 
     @Column(name = "clave", nullable = false)
     private String contraseniaUsuario;
 
-    @OneToMany(mappedBy = "usuario", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "usuario", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private Set<Authority> authorities = new HashSet<>();
 
     @OneToMany(mappedBy = "use")
@@ -71,6 +70,7 @@ public class Usuario implements UserDetails {
     public void setIdUsuario(Long idUsuario) {
         this.idUsuario = idUsuario;
     }
+
     public String getNombreUsuario() {
         return nombreUsuario;
     }
@@ -86,6 +86,7 @@ public class Usuario implements UserDetails {
     public void setContraseniaUsuario(String contraseniaUsuario) {
         this.contraseniaUsuario = contraseniaUsuario;
     }
+
     public List<UsuarioPrecio> getPrecios() {
         return precios;
     }
@@ -93,6 +94,5 @@ public class Usuario implements UserDetails {
     public void setPrecios(List<UsuarioPrecio> precios) {
         this.precios = precios;
     }
-
 
 }
