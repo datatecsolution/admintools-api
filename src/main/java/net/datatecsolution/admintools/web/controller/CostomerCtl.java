@@ -11,23 +11,23 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/costomers")
-@CrossOrigin(origins = {"http://201.190.38.238", "http://localhost:3000/"})
+@CrossOrigin(origins = { "http://201.190.38.238", "http://localhost:3000/" })
 public class CostomerCtl {
     @Autowired
     private CostomerService costomerService;
 
-//    @GetMapping("/all")
-//    public ResponseEntity<List<Costomer>> getAll() {
-//        return new ResponseEntity<>(costomerService.getdAll(), HttpStatus.OK);
-//    }
+    // @GetMapping("/all")
+    // public ResponseEntity<List<Costomer>> getAll() {
+    // return new ResponseEntity<>(costomerService.getdAll(), HttpStatus.OK);
+    // }
     @GetMapping("name/{name}")
-    public ResponseEntity<List<Costomer>> getByNome(@PathVariable String name,@RequestParam String user) {
+    public ResponseEntity<List<Costomer>> getByNome(@PathVariable String name, @RequestParam String user) {
 
-        if (name == null || name.isEmpty()||  user == null||  user.isEmpty()) {
+        if (name == null || name.isEmpty() || user == null || user.isEmpty()) {
             String errorMessage = "Error: Ambos parámetros 'busqueda' y 'usuario' son requeridos.";
-            new ResponseEntity<>(errorMessage,HttpStatus.BAD_REQUEST);
+            new ResponseEntity<>(errorMessage, HttpStatus.BAD_REQUEST);
         }
-        return costomerService.getdByName(name,user)
+        return costomerService.getdByName(name, user)
                 .map(costomer -> new ResponseEntity<>(costomer, HttpStatus.OK))
                 .orElseGet(() -> new ResponseEntity<>(HttpStatus.NOT_FOUND));
     }

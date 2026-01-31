@@ -12,29 +12,29 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/orders")
-@CrossOrigin(origins = {"http://201.190.38.238", "http://localhost:3000/"})
+@CrossOrigin(origins = { "http://201.190.38.238", "http://localhost:3000/" })
 public class OrderCtl {
     @Autowired
     private OrderService orderService;
 
-//    @GetMapping("/all")
-//    public ResponseEntity<List<Order>> getAll() {
-//        return new ResponseEntity<>(orderService.getAll(), HttpStatus.OK);
-//    }
+    // @GetMapping("/all")
+    // public ResponseEntity<List<Order>> getAll() {
+    // return new ResponseEntity<>(orderService.getAll(), HttpStatus.OK);
+    // }
 
     @GetMapping("/{orderId}")
-    public ResponseEntity<Order>  getProduct(@PathVariable("orderId") int orderId,@RequestParam String user) {
-        return orderService.getOrderUser(orderId,user)
+    public ResponseEntity<Order> getProduct(@PathVariable("orderId") int orderId, @RequestParam String user) {
+        return orderService.getOrderUser(orderId, user)
                 .map(order -> new ResponseEntity<>(order, HttpStatus.OK))
                 .orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND));
     }
+
     @PostMapping("/save")
-    public ResponseEntity<Object>  save(@RequestBody Order order) {
+    public ResponseEntity<Object> save(@RequestBody Order order) {
 
-
-        if (  order.getUser() == null||   order.getUser().isEmpty()) {
+        if (order.getUser() == null || order.getUser().isEmpty()) {
             String errorMessage = "Error:'usuario' es requerido.";
-            new ResponseEntity<>(errorMessage,HttpStatus.BAD_REQUEST);
+            new ResponseEntity<>(errorMessage, HttpStatus.BAD_REQUEST);
         }
 
         try {
@@ -46,30 +46,30 @@ public class OrderCtl {
                     .body("Error al guardar la orden: " + e.getMessage());
         }
 
-
     }
+
     @GetMapping("/today")
     public ResponseEntity<List<Order>> getByNow(@RequestParam String user) {
         System.out.println("user: " + user);
-        if (  user == null||  user.isEmpty()) {
+        if (user == null || user.isEmpty()) {
             String errorMessage = "Error:'usuario' es requerido.";
-            new ResponseEntity<>(errorMessage,HttpStatus.BAD_REQUEST);
+            new ResponseEntity<>(errorMessage, HttpStatus.BAD_REQUEST);
         }
         return new ResponseEntity<>(orderService.findByToday(user), HttpStatus.OK);
     }
 
     @DeleteMapping("/delete/{id}")
-    public ResponseEntity delete(@PathVariable("id") int orderId,@RequestParam String user) {
-        //se tiene que enviar el usuario para verificar que la orden le pertenece
+    public ResponseEntity delete(@PathVariable("id") int orderId, @RequestParam String user) {
+        // se tiene que enviar el usuario para verificar que la orden le pertenece
         System.out.println("user: " + user);
-        if (  user == null||  user.isEmpty()) {
+        if (user == null || user.isEmpty()) {
             String errorMessage = "Error:'usuario' es requerido.";
-            new ResponseEntity<>(errorMessage,HttpStatus.BAD_REQUEST);
+            new ResponseEntity<>(errorMessage, HttpStatus.BAD_REQUEST);
         }
 
-        if(orderService.delete(orderId,user)){
+        if (orderService.delete(orderId, user)) {
             return new ResponseEntity(HttpStatus.OK);
-        }else {
+        } else {
             return new ResponseEntity(HttpStatus.NOT_FOUND);
         }
     }

@@ -162,6 +162,7 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(Arrays.asList(
                 "http://201.190.38.238:8091",
                 "http://localhost:8091", // Útil para pruebas locales
+                "http://localhost:3000", // Docker Local
                 "https://pedidos.distribuidorasharon.com" // Producción
         ));
 

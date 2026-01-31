@@ -38,3 +38,4 @@ out/
 
 ### Local Config ###
 src/main/resources/application-dev.properties
+docker-compose.yml

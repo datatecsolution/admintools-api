@@ -6,7 +6,7 @@ public class PasswordEncoderUtil {
 
     public static void main(String[] args) {
         PasswordEncoder encoder = new BCryptPasswordEncoder();
-        String rawPassword = "GA2026"; // La contraseña que deseas codificar 0804
+        String rawPassword = "FER2021"; // La contraseña que deseas codificar 0804
         String encodedPassword = encoder.encode(rawPassword);
 
         System.out.println("Encoded Password: " + encodedPassword);
