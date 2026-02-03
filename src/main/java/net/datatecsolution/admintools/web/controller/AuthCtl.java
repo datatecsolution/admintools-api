@@ -43,4 +43,31 @@ public class AuthCtl {
             return ResponseEntity.status(401).body("Authentication failed: " + e.getMessage());
         }
     }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refresh(@RequestHeader("Authorization") String token) {
+        try {
+            if (token != null && token.startsWith("Bearer ")) {
+                token = token.substring(7);
+            }
+
+            String username = jwtUtil.extractUsername(token);
+
+            if (username != null) {
+                final org.springframework.security.core.userdetails.UserDetails userDetails = userDetailsService
+                        .loadUserByUsername(username);
+
+                if (jwtUtil.validateToken(token, userDetails)) {
+                    final String jwt = jwtUtil.generateToken(userDetails);
+                    java.util.Map<String, String> response = new java.util.HashMap<>();
+                    response.put("token", jwt);
+                    response.put("username", userDetails.getUsername());
+                    return ResponseEntity.ok(response);
+                }
+            }
+            return ResponseEntity.status(401).body("Invalid token");
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body("Error refreshing token: " + e.getMessage());
+        }
+    }
 }

@@ -121,32 +121,20 @@ public class SecurityConfig {
                                                                 "/favicon.ico")
                                                 .permitAll()
 
-                                                // 3. RUTAS DE LA APP (¡AQUÍ ESTÁ LA SOLUCIÓN!)
-                                                // Agregamos esto para que puedas ver los datos sin que te bloquee
-                                                // .requestMatchers(
-                                                // "/admin_tools/api/products/**",
-                                                // "/admin_tools/api/orders/**",
-                                                // "/admin_tools/api/customers/**",
-                                                // "/admin_tools/api/users/**",
-                                                // "/admin_tools/api/price/**",
-                                                // // Variantes por si acaso
-                                                // "/api/products/**",
-                                                // "/api/orders/**",
-                                                // "/api/customers/**"
-                                                // ).permitAll()
+                                                // 3. RUTAS DE LA APP que necesitan ser públicas (estáticos, etc)
                                                 .requestMatchers(
-                                                                "/admin_tools/**",
-                                                                "/products/**",
-                                                                "/orders/**",
-                                                                "/auth/**",
-                                                                "/price/**",
-                                                                "/users/**",
                                                                 "/static/**",
                                                                 "/favicon.ico")
                                                 .permitAll()
 
                                                 // 4. Cualquier otra cosa requiere autenticación
                                                 .anyRequest().authenticated())
+                                .exceptionHandling(exception -> exception
+                                                .authenticationEntryPoint((request, response, authException) -> {
+                                                        response.sendError(
+                                                                        jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED,
+                                                                        "Unauthorized");
+                                                }))
                                 .sessionManagement(session -> session
                                                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                                 .formLogin(form -> form.disable())

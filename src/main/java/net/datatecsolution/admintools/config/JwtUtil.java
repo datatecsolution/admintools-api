@@ -20,7 +20,7 @@ public class JwtUtil {
     // vars
     // This key must be at least 256 bits (32 bytes)
     private static final Key SECRET_KEY = Keys.secretKeyFor(SignatureAlgorithm.HS256);
-    private static final long EXPIRATION_TIME = 1000 * 60 * 60 * 10; // 10 hours
+    private static final long EXPIRATION_TIME = 1000 * 60 * 60 * 24 * 6; // 6 days
 
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
