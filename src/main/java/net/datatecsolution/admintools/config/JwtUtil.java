@@ -19,7 +19,10 @@ public class JwtUtil {
     // IMPORTANT: In production, store this in application.properties or environment
     // vars
     // This key must be at least 256 bits (32 bytes)
-    private static final Key SECRET_KEY = Keys.secretKeyFor(SignatureAlgorithm.HS256);
+    // Clave secreta fija para persistencia entre reinicios (Debe ser de 256 bits /
+    // 32 bytes mínimo)
+    private static final String SECRET_STRING = "datatecsolution_admintools_secret_key_2026_secure";
+    private static final Key SECRET_KEY = Keys.hmacShaKeyFor(SECRET_STRING.getBytes());
     private static final long EXPIRATION_TIME = 1000 * 60 * 60 * 24 * 6; // 6 days
 
     public String extractUsername(String token) {
