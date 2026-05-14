@@ -1,6 +1,7 @@
 package net.datatecsolution.admintools.config;
 
 import net.datatecsolution.admintools.domain.service.CustomUserDetailsService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -18,7 +19,6 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 @Configuration
@@ -27,10 +27,18 @@ public class SecurityConfig {
 
         private final CustomUserDetailsService customUserDetailsService;
         private final JwtRequestFilter jwtRequestFilter;
+        private final List<String> allowedOrigins;
 
-        public SecurityConfig(CustomUserDetailsService customUserDetailsService, JwtRequestFilter jwtRequestFilter) {
+        public SecurityConfig(
+                        CustomUserDetailsService customUserDetailsService,
+                        JwtRequestFilter jwtRequestFilter,
+                        @Value("${cors.allowed-origins}") String allowedOriginsCsv) {
                 this.customUserDetailsService = customUserDetailsService;
                 this.jwtRequestFilter = jwtRequestFilter;
+                this.allowedOrigins = Arrays.stream(allowedOriginsCsv.split(","))
+                                .map(String::trim)
+                                .filter(s -> !s.isEmpty())
+                                .toList();
         }
 
         // @Bean
@@ -148,13 +156,9 @@ public class SecurityConfig {
         CorsConfigurationSource corsConfigurationSource() {
                 CorsConfiguration configuration = new CorsConfiguration();
 
-                // 5. SEGURIDAD: Solo permitimos tu IP y puerto de React
-                configuration.setAllowedOrigins(Arrays.asList(
-                                "http://201.190.38.238:8091",
-                                "http://localhost:8091", // Útil para pruebas locales
-                                "http://localhost:3000", // Docker Local
-                                "https://pedidos.distribuidorasharon.com" // Producción
-                ));
+                // Origenes permitidos vienen de cors.allowed-origins (env var
+                // CORS_ALLOWED_ORIGINS en prod, default en application-dev.properties).
+                configuration.setAllowedOrigins(allowedOrigins);
 
                 configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
                 configuration.setAllowedHeaders(Arrays.asList("*"));

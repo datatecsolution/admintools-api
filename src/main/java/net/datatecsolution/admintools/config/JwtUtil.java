@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
@@ -16,14 +17,15 @@ import java.util.function.Function;
 @Component
 public class JwtUtil {
 
-    // IMPORTANT: In production, store this in application.properties or environment
-    // vars
-    // This key must be at least 256 bits (32 bytes)
-    // Clave secreta fija para persistencia entre reinicios (Debe ser de 256 bits /
-    // 32 bytes mínimo)
-    private static final String SECRET_STRING = "datatecsolution_admintools_secret_key_2026_secure";
-    private static final Key SECRET_KEY = Keys.hmacShaKeyFor(SECRET_STRING.getBytes());
-    private static final long EXPIRATION_TIME = 1000 * 60 * 60 * 24 * 6; // 6 days
+    private final Key secretKey;
+    private final long expirationMillis;
+
+    public JwtUtil(
+            @Value("${app.jwt.secret}") String secret,
+            @Value("${app.jwt.expiration-ms:518400000}") long expirationMillis) {
+        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes());
+        this.expirationMillis = expirationMillis;
+    }
 
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
@@ -39,7 +41,7 @@ public class JwtUtil {
     }
 
     private Claims extractAllClaims(String token) {
-        return Jwts.parserBuilder().setSigningKey(SECRET_KEY).build().parseClaimsJws(token).getBody();
+        return Jwts.parserBuilder().setSigningKey(secretKey).build().parseClaimsJws(token).getBody();
     }
 
     private Boolean isTokenExpired(String token) {
@@ -56,8 +58,8 @@ public class JwtUtil {
                 .setClaims(claims)
                 .setSubject(subject)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
-                .signWith(SECRET_KEY, SignatureAlgorithm.HS256)
+                .setExpiration(new Date(System.currentTimeMillis() + expirationMillis))
+                .signWith(secretKey, SignatureAlgorithm.HS256)
                 .compact();
     }
 
