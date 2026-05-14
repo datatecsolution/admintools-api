@@ -47,22 +47,4 @@ public class UsuarioRepository implements UserRepository {
         List<Usuario> users = (List<Usuario>) usuarioCRUD.findAll();
         return userMapper.toUsers(users);
     }
-
-//    public Usuario findByNombreUsuario(String username) {
-//
-//        System.out.println("ID USUARIO =======>"+username);
-//        Optional<Usuario> usuarioOptional = usuarioCRUD.findByNombreUsuario(username);
-//
-//        if(usuario==null) {
-//            System.out.println("NOMBRE USUARIO ======>"+usuario);
-//        }else{
-//            System.out.println("NOMBRE USUARIO ======>"+usuario.getNombreUsuario());
-//        }
-//        return usuario;
-//    }
-//    @Override
-//    public Optional<User> findByUsername(String username) {
-//        Usuario usuario=usuarioCRUD.findByNombreUsuario(username);
-//        return Optional.ofNullable(userMapper.toUser(usuario));
-//    }
 }

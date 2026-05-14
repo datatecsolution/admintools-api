@@ -3,6 +3,8 @@ package net.datatecsolution.admintools.domain.service;
 import net.datatecsolution.admintools.domain.Order;
 import net.datatecsolution.admintools.domain.Seller;
 import net.datatecsolution.admintools.domain.repository.OrderRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -11,6 +13,9 @@ import java.util.Optional;
 
 @Service
 public class OrderService {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+
     @Autowired
     private OrderRepository orderRepository;
 
@@ -25,7 +30,7 @@ public class OrderService {
 
         Optional<Seller> seller= sellerService.findByUser(user);
 
-        System.out.println("El id de la factura es ===============>"+order.getOrderId());
+        log.debug("Guardando orden con id={}", order.getOrderId());
 
         //se verifica que la orden es nueva sino significa que es modificada
         if (order.getOrderId() == null) {

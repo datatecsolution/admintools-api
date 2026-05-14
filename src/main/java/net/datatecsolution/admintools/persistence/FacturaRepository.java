@@ -5,6 +5,8 @@ import net.datatecsolution.admintools.domain.repository.OrderRepository;
 import net.datatecsolution.admintools.persistence.crud.*;
 import net.datatecsolution.admintools.persistence.entity.*;
 import net.datatecsolution.admintools.persistence.mapper.OrderMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
 
@@ -16,6 +18,9 @@ import java.util.Optional;
 
 @Repository
 public class FacturaRepository implements OrderRepository {
+
+    private static final Logger log = LoggerFactory.getLogger(FacturaRepository.class);
+
     @Autowired
     private FacturaCRUD facturaCRUD;
     @Autowired
@@ -38,89 +43,51 @@ public class FacturaRepository implements OrderRepository {
     }
 
     @Override
-    public Order save(Order order,String user) {
-        Factura factura= mapper.toFactura(order);
-        System.out.println("El codigo de factura es inicial======>>>>>>>>"+factura.getIdFactura());
-        if(factura.getIdFactura()==null) {
-            //System.out.println("El codigo de factura es ======>>>>>>>> null");
+    public Order save(Order order, String user) {
+        Factura factura = mapper.toFactura(order);
+        log.debug("save() inicial idFactura={}", factura.getIdFactura());
+
+        if (factura.getIdFactura() == null) {
             Optional<Empleado> empleado = empleadoCRUD.findById(order.getSellerId());
             if (empleado.isPresent()) {
                 factura.setVendedor(empleado.get());
                 factura.setVendedorCod(empleado.get().getCodigo());
             }
-            //System.out.println("Cant de detalles======>>>>>>>>"+factura.getDetalles().size());
-            //se completa los detalles para poder guardarlos
+
+            // se completa los detalles para poder guardarlos
             for (DetalleFactura detalleFactura : factura.getDetalles()) {
-                //System.out.println("Item id articulo ======>>>>>>>>"+detalleFactura.getCodigoArt());
                 Optional<Articulo> articulo = articuloCRUD.findById(detalleFactura.getCodigoArt());
                 if (articulo.isPresent()) {
                     detalleFactura.setArticulo(articulo.get());
                     detalleFactura.setCodigoArt(articulo.get().getArticuloId());
                     detalleFactura.setFactura(factura);
                 }
-
             }
 
             factura.calcularTotales();
-            //se guarda los el encabezado de la orden
             Factura savedFactura = facturaCRUD.save(factura);
-
-//            detalleFacturaCRUD.deleteDetalleFacturaByIdFactura(savedFactura.getIdFactura());
-//
-//
-//            //se recorre de nuevo los detalles para guardarlos uno a uno
-//            for (DetalleFactura detalleFactura : factura.getDetalles()) {
-//                detalleFactura.setIdFactura(savedFactura.getIdFactura());
-//                detalleFactura.setFactura(savedFactura);
-//                detalleFacturaCRUD.save(detalleFactura);
-//
-//            }
             return mapper.toOrder(savedFactura);
-        }else{
-            System.out.println("El codigo de factura es ======>>>>>>>>"+factura.getIdFactura());
+        } else {
+            log.debug("save() actualizando idFactura={} con {} detalles",
+                    factura.getIdFactura(), factura.getDetalles().size());
+
             Optional<Empleado> empleado = empleadoCRUD.findById(order.getSellerId());
             empleado.ifPresent(factura::setVendedor);
 
-
-
-            System.out.println("Cant de detalles======>>>>>>>>"+factura.getDetalles().size());
-
-
-            //se completa los detalles para poder guardarlos
+            // se completa los detalles para poder guardarlos
             for (DetalleFactura detalleFactura : factura.getDetalles()) {
-                System.out.println("Item id articulo ======>>>>>>>>"+detalleFactura.getCodigoArt());
+                log.debug("save() detalle codigoArt={}", detalleFactura.getCodigoArt());
                 Optional<Articulo> articulo = articuloCRUD.findById(detalleFactura.getCodigoArt());
                 if (articulo.isPresent()) {
                     detalleFactura.setArticulo(articulo.get());
                     detalleFactura.setCodigoArt(articulo.get().getArticuloId());
                 }
                 detalleFactura.setFactura(factura);
-                //detalleFactura.setIdFactura(factura.getIdFactura());
-
             }
 
-
             factura.calcularTotales();
-           // detalleFacturaCRUD.deleteDetalleFacturaByIdFactura(factura.getIdFactura());
-
-//            //se recorre de nuevo los detalles para guardarlos uno a uno
-//            for (DetalleFactura detalleFactura : factura.getDetalles()) {
-//                System.out.print(",Item cod articulo ======>>>>>>>>"+detalleFactura.getCodigoArt());
-//                System.out.print(",Item cantidad ======>>>>>>>>"+detalleFactura.getCantidad());
-//                System.out.println(",Item total ======>>>>>>>>"+detalleFactura.getTotal());
-//                detalleFacturaCRUD.save(detalleFactura);
-//
-//            }
             return mapper.toOrder(facturaCRUD.save(factura));
-
-
-
-
         }
-        //facturaCRUD.save(savedFactura);
-
-
-
     }
 
     @Override

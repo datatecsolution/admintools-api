@@ -3,6 +3,8 @@ package net.datatecsolution.admintools.persistence.entity;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -13,6 +15,8 @@ import java.util.List;
 @Entity
 @Table(name = "encabezado_factura_temp")
 public class Factura {
+
+	private static final Logger log = LoggerFactory.getLogger(Factura.class);
 
 	@Id
 	@Column(name = "numero_factura")
@@ -184,7 +188,7 @@ public class Factura {
 		//se establece la fecha
 		setFecha(LocalDateTime.now());
 
-		System.out.println("Cantidad items =======>"+getDetalles().size());
+		log.debug("calcularTotales() detalles={}", getDetalles().size());
 
 		for(int x=0; x<getDetalles().size();x++){
 
@@ -192,8 +196,8 @@ public class Factura {
 
 				if(detalle.getCantidad().doubleValue()!=0){
 
-					System.out.println("Item Cantidad =======>"+detalle.getCantidad().doubleValue());
-					System.out.println("Item precio =======>"+detalle.getPrecioVentaItem());
+					log.debug("calcularTotales() item cantidad={} precio={}",
+							detalle.getCantidad().doubleValue(), detalle.getPrecioVentaItem());
 
 
 					//se obtien la cantidad y el precio de compra por unidad
