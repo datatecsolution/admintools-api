@@ -135,6 +135,14 @@ public class SecurityConfig {
                                                                 "/favicon.ico")
                                                 .permitAll()
 
+                                                // 4. OpenAPI / Swagger UI publicos (documentacion + try-it-out)
+                                                .requestMatchers(
+                                                                "/swagger-ui/**",
+                                                                "/swagger-ui.html",
+                                                                "/v3/api-docs/**",
+                                                                "/v3/api-docs.yaml")
+                                                .permitAll()
+
                                                 // 4. Cualquier otra cosa requiere autenticación
                                                 .anyRequest().authenticated())
                                 .exceptionHandling(exception -> exception
