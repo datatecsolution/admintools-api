@@ -10,8 +10,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.security.Principal;
 import java.util.Collections;
@@ -93,6 +95,25 @@ class OrderCtlTest {
                         .content(objectMapper.writeValueAsString(incoming)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.orderId").value(7));
+    }
+
+    @Test
+    void save_intentoActualizarOrdenAjena_retorna404() throws Exception {
+        // Simula el ataque: usuario "ronal" envia un orderId existente
+        // pero que pertenece a otro vendedor. El service debe rechazar
+        // con 404 para no revelar si el id existe o no.
+        Order intentoUpdate = new Order();
+        intentoUpdate.setOrderId(42);
+
+        when(orderService.save(any(Order.class), eq("ronal")))
+                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Orden no encontrada o no pertenece al usuario"));
+
+        mockMvc.perform(post("/orders/save")
+                        .principal(RONAL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(intentoUpdate)))
+                .andExpect(status().isNotFound());
     }
 
     @Test

@@ -6,7 +6,9 @@ import net.datatecsolution.admintools.domain.repository.OrderRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Optional;
@@ -25,45 +27,47 @@ public class OrderService {
     public List<Order> getAll() {
         return orderRepository.getAll();
     }
-    public Order save(Order order,String user) {
-        //crear validacion de las ordenes
 
-        Optional<Seller> seller= sellerService.findByUser(user);
+    public Order save(Order order, String user) {
+        Optional<Seller> seller = sellerService.findByUser(user);
+        if (seller.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                    "Vendedor no encontrado para el usuario autenticado");
+        }
 
-        log.debug("Guardando orden con id={}", order.getOrderId());
+        log.debug("Guardando orden con id={} user={}", order.getOrderId(), user);
 
-        //se verifica que la orden es nueva sino significa que es modificada
         if (order.getOrderId() == null) {
+            // INSERT
             order.setActive(1);
-        }else{
+        } else {
+            // UPDATE: validar que la orden pertenezca al usuario autenticado.
+            // Sin este check, un usuario con JWT valido puede sobrescribir
+            // ordenes de otros vendedores enviando un orderId ajeno.
+            Optional<Order> existing = orderRepository.getOrderUser(order.getOrderId(), user);
+            if (existing.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Orden no encontrada o no pertenece al usuario");
+            }
             order.setActive(2);
         }
 
-
-
-        if(seller.isPresent()) {
-            order.setSellerId(seller.get().getId());
-            //order.setActive(1);
-            return orderRepository.save(order,user);
-        }else{
-            throw new RuntimeException("Something went wrong");
-        }
-
-
+        order.setSellerId(seller.get().getId());
+        return orderRepository.save(order, user);
     }
+
     public List<Order> findByToday(String user) {
         return orderRepository.getByToday(user);
     }
 
     public boolean delete(int orderId, String user) {
-
-        return getOrderUser(orderId,user).map(order -> {
+        return getOrderUser(orderId, user).map(order -> {
             orderRepository.delete(orderId);
             return true;
         }).orElse(false);
     }
-    public Optional<Order> getOrderUser(int orderId, String user) {
-        return orderRepository.getOrderUser(orderId,user);
 
+    public Optional<Order> getOrderUser(int orderId, String user) {
+        return orderRepository.getOrderUser(orderId, user);
     }
 }

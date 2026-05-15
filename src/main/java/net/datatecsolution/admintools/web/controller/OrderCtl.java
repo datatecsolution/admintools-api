@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -36,11 +37,14 @@ public class OrderCtl {
         try {
             Order savedOrder = orderService.save(order, user);
             return new ResponseEntity<>(savedOrder, HttpStatus.CREATED);
+        } catch (ResponseStatusException e) {
+            // Propagar el status real (401, 404, etc.) — sin esto el catch
+            // generico de abajo lo convertiria en 500.
+            throw e;
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Error al guardar la orden: " + e.getMessage());
         }
-
     }
 
     @GetMapping("/today")
