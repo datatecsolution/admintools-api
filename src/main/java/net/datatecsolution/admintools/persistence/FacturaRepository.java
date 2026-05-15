@@ -8,10 +8,12 @@ import net.datatecsolution.admintools.persistence.mapper.OrderMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -20,6 +22,9 @@ import java.util.Optional;
 public class FacturaRepository implements OrderRepository {
 
     private static final Logger log = LoggerFactory.getLogger(FacturaRepository.class);
+
+    @Value("${app.timezone:America/Tegucigalpa}")
+    private String timezoneId;
 
     @Autowired
     private FacturaCRUD facturaCRUD;
@@ -92,8 +97,14 @@ public class FacturaRepository implements OrderRepository {
 
     @Override
     public List<Order> getByToday(String user) {
-        LocalDateTime inicioDelDia = LocalDate.now().atStartOfDay();
-        LocalDateTime finDelDia = LocalDate.now().atTime(23, 59, 59);
+        // Usar ZoneId explicito en lugar de LocalDate.now() (default JVM)
+        // garantiza que "hoy" sea consistente independientemente del TZ del
+        // contenedor Docker (frecuentemente UTC, desfasado 6h del horario
+        // local de Honduras).
+        ZoneId zone = ZoneId.of(timezoneId);
+        LocalDate hoy = LocalDate.now(zone);
+        LocalDateTime inicioDelDia = hoy.atStartOfDay();
+        LocalDateTime finDelDia = hoy.atTime(23, 59, 59);
         List<Factura> facturas = (List<Factura>) facturaCRUD.findByFechaIsBetweenAndUsuarioOrderByFechaDesc(inicioDelDia, finDelDia,user);
 
         //se recorre las facturas para cambiar los precios que puede cambiar el usuario

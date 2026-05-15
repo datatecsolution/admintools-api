@@ -185,8 +185,10 @@ public class Factura {
 		//se establecen los totales en cero
 		this.resetTotales();
 
-		//se establece la fecha
-		setFecha(LocalDateTime.now());
+		// NOTA: la fecha NO se modifica aqui. El @PrePersist arriba la setea
+		// al INSERT, y en los UPDATE preservamos la fecha original de
+		// creacion. Si fecha se reescribiera, ordenes editadas migrarian
+		// al dia actual en el filtro getByToday y se perderia trazabilidad.
 
 		log.debug("calcularTotales() detalles={}", getDetalles().size());
 
