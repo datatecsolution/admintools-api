@@ -2,6 +2,8 @@ package net.datatecsolution.admintools.persistence.entity;
 
 import jakarta.persistence.*;
 import org.hibernate.annotations.Immutable;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.util.List;
 import java.util.Set;
@@ -33,7 +35,12 @@ public class Articulo {
     @Column(name = "codigo_marca")
     private Integer idCategoria;
 
+    // La vista articulo_view define existencia como DECIMAL (suma del kardex).
+    // Sin @JdbcTypeCode, Hibernate asume FLOAT por el tipo Double y falla la
+    // validacion de esquema con ddl-auto=validate. El @JdbcTypeCode alinea
+    // el tipo JDBC sin tener que cambiar Double -> BigDecimal (mas invasivo).
     @Column(name = "existencia")
+    @JdbcTypeCode(SqlTypes.DECIMAL)
     private Double existencia;
 
     @ManyToOne
