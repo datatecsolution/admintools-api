@@ -2,6 +2,8 @@ package net.datatecsolution.admintools.persistence.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
@@ -11,8 +13,12 @@ import java.util.*;
 @Table(name = "usuario")
 public class Usuario implements UserDetails {
 
+    // La columna usuario.id es INT en BD; el campo Java es Long por
+    // legacy. @JdbcTypeCode alinea el tipo JDBC esperado con INTEGER
+    // sin tener que cambiar Long -> Integer (rompe consumidores).
     @Id
     @Column(name = "id")
+    @JdbcTypeCode(SqlTypes.INTEGER)
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long idUsuario;
 

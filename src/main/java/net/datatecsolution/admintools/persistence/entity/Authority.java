@@ -12,8 +12,11 @@ public class Authority implements GrantedAuthority {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // La columna authorities.username referencia usuario.usuario (VARCHAR),
+    // NO usuario.id (BIGINT PK). Sin referencedColumnName, Hibernate asume
+    // que la FK apunta al PK del Usuario (Long) y falla schema-validation.
     @ManyToOne
-    @JoinColumn(name = "username")
+    @JoinColumn(name = "username", referencedColumnName = "usuario")
     private Usuario usuario;
 
     @Column(name = "authority", nullable = false)
