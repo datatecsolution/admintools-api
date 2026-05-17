@@ -76,6 +76,16 @@ public class FacturaRepository implements OrderRepository {
             log.debug("save() actualizando idFactura={} con {} detalles",
                     factura.getIdFactura(), factura.getDetalles().size());
 
+            // Preservar fecha original: la React no envia el campo `date` en
+            // el payload de update, asi que `factura.fecha` viene null del
+            // mapper. @PrePersist solo dispara en INSERT, NO en MERGE, asi
+            // que sin esto JPA escribiria fecha=NULL → MySQL coerce a
+            // '0000-00-00' → la orden desaparece del filtro getByToday.
+            if (factura.getFecha() == null) {
+                facturaCRUD.findById(factura.getIdFactura())
+                        .ifPresent(existente -> factura.setFecha(existente.getFecha()));
+            }
+
             Optional<Empleado> empleado = empleadoCRUD.findById(order.getSellerId());
             empleado.ifPresent(factura::setVendedor);
 
