@@ -107,14 +107,23 @@ public class FacturaRepository implements OrderRepository {
 
     @Override
     public List<Order> getByToday(String user) {
-        // Usar ZoneId explicito en lugar de LocalDate.now() (default JVM)
-        // garantiza que "hoy" sea consistente independientemente del TZ del
-        // contenedor Docker (frecuentemente UTC, desfasado 6h del horario
-        // local de Honduras).
-        ZoneId zone = ZoneId.of(timezoneId);
-        LocalDate hoy = LocalDate.now(zone);
-        LocalDateTime inicioDelDia = hoy.atStartOfDay();
-        LocalDateTime finDelDia = hoy.atTime(23, 59, 59);
+        // Calcula "hoy" en la zona horaria del cliente (Honduras por default).
+        // Convierte los limites al JVM-TZ antes de pasarlos al driver MySQL,
+        // porque con serverTimezone=GMT-6 en la URL el driver aplica
+        // conversion sobre LocalDateTime (a pesar de ser tipo naive). Si
+        // pasamos "Honduras 00:00" como LocalDateTime sin TZ, el driver lo
+        // interpreta como JVM-local (UTC) y lo convierte a GMT-6, terminando
+        // en "May 16 18:00" en lugar de "May 17 00:00". Pre-convertir a
+        // JVM-TZ neutraliza este efecto.
+        ZoneId hondurasZone = ZoneId.of(timezoneId);
+        ZoneId jvmZone = ZoneId.systemDefault();
+        LocalDate hoy = LocalDate.now(hondurasZone);
+        LocalDateTime inicioDelDia = hoy.atStartOfDay(hondurasZone)
+                .withZoneSameInstant(jvmZone)
+                .toLocalDateTime();
+        LocalDateTime finDelDia = hoy.atTime(23, 59, 59).atZone(hondurasZone)
+                .withZoneSameInstant(jvmZone)
+                .toLocalDateTime();
         List<Factura> facturas = (List<Factura>) facturaCRUD.findByFechaIsBetweenAndUsuarioOrderByFechaDesc(inicioDelDia, finDelDia,user);
 
         //se recorre las facturas para cambiar los precios que puede cambiar el usuario
