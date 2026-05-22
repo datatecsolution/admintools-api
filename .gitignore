@@ -38,4 +38,14 @@ out/
 
 ### Local Config ###
 src/main/resources/application-dev.properties
-docker-compose.yml
+
+# El docker-compose.yml de la raiz tiene credenciales hardcoded para dev,
+# no se commitea. Pero los compose de deploy/ SI van en git (son templates
+# sin secretos; las credenciales viven en .env-admintools que se ignora).
+/docker-compose.yml
+
+# Archivos .env con credenciales reales. Los *.example si se commitean.
+.env
+.env-*
+!.env*.example
+!.env-*.example

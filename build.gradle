@@ -19,11 +19,14 @@ repositories {
 
 dependencies {
     // Modulo compartido con el Swing (logica pura, calculos financieros).
-    // Publicarlo primero con:
+    // Habilitado en US-016 para que los controllers de Sprint 3+
+    // (FacturaController, etc.) puedan inyectar FacturacionCalculadora
+    // y demas servicios de core sin re-implementar logica.
+    //
+    // Si el JAR no se resuelve, republicar desde el repo del Swing con:
     //   cd /Users/jdmayorga/IdeaProjects/adminTools
     //   ./gradlew :admintools-core:publishToMavenLocal
-    // Descomentar cuando se necesite (FacturaController en US-020).
-    // implementation 'net.datatecsolution:admintools-core:0.1.0-SNAPSHOT'
+    implementation 'net.datatecsolution:admintools-core:0.1.0-SNAPSHOT'
 
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-web'
