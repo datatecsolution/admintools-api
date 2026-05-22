@@ -61,3 +61,19 @@ services:
     # modo produccion.
     environment:
       - SPRING_PROFILES_ACTIVE=pdn
+
+    # Reutilizar la misma red Docker que el admin-tools-api viejo
+    # (n8n-docker_default). Esto es importante porque las reglas de
+    # iptables del host permiten conexiones a MySQL solo desde esa
+    # subnet. Si el v2 se levanta en su propia red default
+    # (admin-tools-api-v2_default), MySQL le rechaza la conexion con
+    # "Communications link failure" / timeout.
+    #
+    # external: true → la red ya existe (creada por n8n-docker), no
+    # la recrea compose.
+    networks:
+      - n8n-docker_default
+
+networks:
+  n8n-docker_default:
+    external: true
