@@ -1,0 +1,67 @@
+# =====================================================================
+# admin-tools-api — Despliegue de produccion
+#
+# Levanta el container del admin-tools-api con perfil pdn,
+# ddl-auto=validate y credenciales externalizadas en .env-admintools.
+#
+# Uso (desde la raiz del repo, en el server):
+#   cp .env-admintools.example .env-admintools
+#   chmod 600 .env-admintools
+#   nano .env-admintools                  # editar credenciales reales
+#   docker compose up -d --build
+#   docker logs admin-tools-api-v2 --tail 60
+#
+# Ver DEPLOY.md para detalles operativos, troubleshooting y rollback.
+#
+# Dev local: NO uses este yml directamente; crea docker-compose.override.yml
+# (ignorado por git) con tu config local. Mas info en DEPLOY.md.
+# =====================================================================
+
+services:
+  admin-tools-api-v2:
+    container_name: admin-tools-api-v2
+
+    build:
+      # Build desde la raiz del repo (donde vive el Dockerfile).
+      context: .
+      dockerfile: Dockerfile
+
+    restart: unless-stopped
+
+    # Port externo 8083 → port interno 8080 (debe matchear SERVER_PORT
+    # del .env-admintools). Escucha en 0.0.0.0 para ser accesible desde
+    # otras IPs de la red interna del server (ej. http://10.10.0.1:8083).
+    # Si despues se pone detras de nginx-proxy, restringir a 127.0.0.1.
+    ports:
+      - "8083:8080"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    env_file:
+      # Archivo con TODAS las credenciales y config sensible.
+      # Crear desde .env-admintools.example y chmod 600.
+      # NO commitearlo (esta en .gitignore).
+      - .env-admintools
+
+    # Solo SPRING_PROFILES_ACTIVE puede ir inline (no es sensible y
+    # documenta el modo del container).
+    environment:
+      - SPRING_PROFILES_ACTIVE=pdn
+
+    # Reutilizar la red Docker que ya usan los otros containers del
+    # server (n8n-docker_default). Las reglas iptables del host permiten
+    # conexiones a MySQL solo desde esa subnet — si el container se
+    # levanta en una red nueva, MySQL le rechaza la conexion con
+    # "Communications link failure".
+    #
+    # external: true → la red la crea otro compose (n8n-docker), este
+    # solo se une.
+    #
+    # Si en otro cliente la red se llama distinto, cambiar aqui.
+    networks:
+      - n8n-docker_default
+
+networks:
+  n8n-docker_default:
+    external: true

@@ -39,10 +39,10 @@ out/
 ### Local Config ###
 src/main/resources/application-dev.properties
 
-# El docker-compose.yml de la raiz tiene credenciales hardcoded para dev,
-# no se commitea. Pero los compose de deploy/ SI van en git (son templates
-# sin secretos; las credenciales viven en .env-admintools que se ignora).
-/docker-compose.yml
+# El docker-compose.yml de la raiz es el de PRODUCCION (en git, usa
+# env_file). Para dev local, crear un docker-compose.override.yml que
+# compose carga automaticamente y queda fuera de git.
+docker-compose.override.yml
 
 # Archivos .env con credenciales reales. Los *.example si se commitean.
 .env
