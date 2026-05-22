@@ -7,88 +7,96 @@ se corta tráfico al viejo.
 ## Layout en el server
 
 ```
-/home/ronal/
-├── admintools/                       # repo del API (ya clonado)
-│   ├── Dockerfile
-│   └── src/...
-└── admin-tools-api-v2/                # NUEVA carpeta
-    ├── docker-compose.yml
-    ├── .env-admintools                # NO en git, chmod 600
-    └── .env-admintools.example
+/home/ronal/admintools-api/                  # repo del API (clonado)
+├── Dockerfile
+├── src/...
+└── deploy/
+    └── admin-tools-api-v2/
+        ├── docker-compose.yml                # template, en git
+        ├── .env-admintools.example           # template, en git
+        ├── .env-admintools                   # creado manualmente, NO en git
+        └── README.md
 ```
 
 ## Pasos para levantar (en el server)
 
 ```bash
-ssh ronal@ronalserver
+ssh ronal@10.10.0.1
 
-# 1. Crear la carpeta
-mkdir -p /home/ronal/admin-tools-api-v2
-cd /home/ronal/admin-tools-api-v2
+# 1. Pull de la rama feature/deploy-pdn-paralelo
+cd /home/ronal/admintools-api
+git fetch origin
+git checkout feature/deploy-pdn-paralelo
+git pull
 
-# 2. Copiar los archivos de este deploy (desde tu Mac vía scp o git pull
-#    si ya tenés el repo admintools clonado y querés copiarlos manualmente)
-scp /Users/jdmayorga/Desktop/admintools/deploy/admin-tools-api-v2/* \
-    ronal@ronalserver:/home/ronal/admin-tools-api-v2/
+# 2. Entrar a la carpeta del deploy
+cd deploy/admin-tools-api-v2
 
 # 3. Crear .env-admintools desde el template
 cp .env-admintools.example .env-admintools
 chmod 600 .env-admintools
 
-# 4. Editar .env-admintools con las credenciales REALES del cliente
+# 4. Editar .env-admintools con los valores reales del cliente
 nano .env-admintools
-#    - MYSQL_PASSWORD: la password real del usuario admin de MySQL
-#    - APP_JWT_SECRET: generar con `openssl rand -base64 48` o usar el histórico
-#    - CORS_ALLOWED_ORIGINS: dominios de los frontends (POS actual, nueva React)
+#    Mínimo a reemplazar:
+#    - MYSQL_PASSWORD: password real del usuario `admin` de MySQL
+#    - CORS_ALLOWED_ORIGINS: dominios/IPs desde donde se va a probar
+#    Mantener (probado en cliente Ronal):
+#    - APP_JWT_SECRET = el default histórico (tokens existentes seguirán valiendo)
 
 # 5. Build + levantar
 docker compose up -d --build
 
 # 6. Verificar arranque limpio
 docker logs admin-tools-api-v2 --tail 50
-
-#    Esperás ver:
-#      - The following 1 profile is active: "pdn"
-#      - HikariPool-1 - Start completed
-#      - Initialized JPA EntityManagerFactory (sin SchemaManagementException)
-#      - Started AdmintoolsApplication
 ```
 
-## Validar end-to-end
+## Salida esperada en los logs
 
-Con el v2 arriba en `127.0.0.1:8083`, podés:
-
-```bash
-# Health check directo (desde el server)
-curl http://127.0.0.1:8083/admin_tools/api/swagger-ui/index.html
-# Debe devolver el HTML del Swagger
+```
+The following 1 profile is active: "pdn"
+HikariPool-1 - Start completed
+Initialized JPA EntityManagerFactory for persistence unit 'default'
+Tomcat started on port(s): 8080 (http) with context path '/admin_tools/api'
+Started AdmintoolsApplication in X.X seconds
 ```
 
-Si querés probar desde tu Mac/cliente, expone temporalmente via
-nginx-proxy-manager con un subdominio nuevo (ej. `api-v2.cliente.example`)
-o tuneliza con SSH:
+**SIN** ningún `SchemaManagementException`. Si aparece → drift no
+detectado en validación previa, hay que crear V17+ migración.
+
+## Probar desde otra máquina (ej. MacBook 10.10.0.2)
 
 ```bash
-ssh -L 8083:127.0.0.1:8083 ronal@ronalserver
-# después en tu Mac: http://localhost:8083/admin_tools/api/...
+# Swagger
+curl http://10.10.0.1:8083/admin_tools/api/swagger-ui/index.html
+
+# Login (te debe devolver un JWT)
+curl -X POST http://10.10.0.1:8083/admin_tools/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"usuario":"admin","clave":"PASSWORD"}'
+
+# Endpoint protegido con el token recibido
+curl http://10.10.0.1:8083/admin_tools/api/orders/today \
+  -H "Authorization: Bearer eyJ..."
 ```
 
-## Cuando esté validado
+## Cutover (cuando el v2 esté validado)
 
 ```bash
-# 1. Cambiar el frontend para apuntar a v2 (cambio en nginx-proxy o env var React)
+# 1. Cambiar el frontend para apuntar al v2 (env var de la React)
 # 2. Verificar que el container viejo no tiene tráfico
 docker logs admin-tools-api --tail 20
 
 # 3. Apagar el viejo
 docker stop admin-tools-api
 
-# 4. (Opcional) Borrar el viejo
+# 4. (Opcional) Borrar el viejo y limpiar imágenes
 docker rm admin-tools-api
-docker image prune    # libera capas viejas
+docker image prune -f
 
 # 5. (Opcional) Renombrar v2 al nombre canónico
-# (requiere docker-compose con container_name: admin-tools-api)
+# (Requiere editar docker-compose, cambiar container_name a admin-tools-api,
+# cambiar port a 127.0.0.1:8082:8080 si se usa nginx-proxy, y recrear)
 ```
 
 ## Rollback

@@ -18,6 +18,12 @@
 #   2. Verificar que no hay trafico al viejo (docker logs).
 #   3. Apagar admin-tools-api viejo (docker stop admin-tools-api).
 #   4. Renombrar el v2 al nombre canonico o dejarlo asi.
+#
+# Ubicacion en el server:
+#   /home/ronal/admintools-api/deploy/admin-tools-api-v2/
+#     ├── docker-compose.yml        ← este archivo
+#     ├── .env-admintools.example   ← template
+#     └── .env-admintools           ← creado manualmente (NO en git)
 # =====================================================================
 
 services:
@@ -25,19 +31,21 @@ services:
     container_name: admin-tools-api-v2
 
     build:
-      # AJUSTA si tu repo de admintools-api esta en otra ruta.
-      # En el server, este compose se ubica en /home/ronal/admin-tools-api-v2/
-      # y el repo del API esta clonado en /home/ronal/admintools/.
-      context: ../admintools
+      # Este compose vive DENTRO del repo (deploy/admin-tools-api-v2/).
+      # context apunta a la raiz del repo (dos niveles arriba) donde esta
+      # el Dockerfile y el codigo fuente.
+      context: ../..
       dockerfile: Dockerfile
 
     restart: unless-stopped
 
-    # Port distinto al viejo (que esta en 8082). Solo expuesto en
-    # localhost — el reverse proxy (nginx-proxy-manager) se encarga
-    # de exponer al exterior si hace falta.
+    # Port distinto al viejo (8082). Escucha en TODAS las interfaces
+    # del server (0.0.0.0) para ser accesible por la IP interna
+    # (ej. http://10.10.0.1:8083/admin_tools/api) durante la fase de
+    # validacion. Cuando el v2 reemplace al viejo se puede restringir
+    # a 127.0.0.1 si se usa nginx-proxy.
     ports:
-      - "127.0.0.1:8083:8080"
+      - "8083:8080"
 
     extra_hosts:
       - "host.docker.internal:host-gateway"
