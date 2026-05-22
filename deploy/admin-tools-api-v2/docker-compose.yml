@@ -1,0 +1,55 @@
+# =====================================================================
+# admin-tools-api-v2 — Despliegue PARALELO al container actual
+#
+# Este compose levanta una SEGUNDA instancia del admin-tools-api (la
+# version actualizada con perfil pdn + ddl-auto=validate + credenciales
+# externalizadas) SIN tocar el container admin-tools-api que ya esta
+# corriendo en produccion.
+#
+# Beneficios:
+#   - Zero downtime: ambos containers conviven hasta que valides el v2.
+#   - Rollback trivial: si algo falla, apagas admin-tools-api-v2 y
+#     el viejo sigue sirviendo.
+#   - Validacion en vivo: podes apuntar la nueva app React al port
+#     del v2 y testear sin afectar usuarios actuales.
+#
+# Cuando el v2 este validado:
+#   1. Cambiar el frontend (React/POS) para apuntar al v2.
+#   2. Verificar que no hay trafico al viejo (docker logs).
+#   3. Apagar admin-tools-api viejo (docker stop admin-tools-api).
+#   4. Renombrar el v2 al nombre canonico o dejarlo asi.
+# =====================================================================
+
+services:
+  admin-tools-api-v2:
+    container_name: admin-tools-api-v2
+
+    build:
+      # AJUSTA si tu repo de admintools-api esta en otra ruta.
+      # En el server, este compose se ubica en /home/ronal/admin-tools-api-v2/
+      # y el repo del API esta clonado en /home/ronal/admintools/.
+      context: ../admintools
+      dockerfile: Dockerfile
+
+    restart: unless-stopped
+
+    # Port distinto al viejo (que esta en 8082). Solo expuesto en
+    # localhost — el reverse proxy (nginx-proxy-manager) se encarga
+    # de exponer al exterior si hace falta.
+    ports:
+      - "127.0.0.1:8083:8080"
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    env_file:
+      # Archivo con TODAS las credenciales y config sensible.
+      # Crear desde .env.example y chmod 600.
+      # NO commitearlo (esta en .gitignore).
+      - .env-admintools
+
+    # Solo SPRING_PROFILES_ACTIVE puede ir inline porque no es sensible
+    # y deja claro al lector que este compose levanta el container en
+    # modo produccion.
+    environment:
+      - SPRING_PROFILES_ACTIVE=pdn
