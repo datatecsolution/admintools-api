@@ -2,6 +2,8 @@ package net.datatecsolution.admintools.persistence.crud;
 
 import net.datatecsolution.admintools.domain.repository.CostomerRepository;
 import net.datatecsolution.admintools.persistence.entity.Cliente;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -33,4 +35,16 @@ public interface ClienteCRUD extends JpaRepository<Cliente, Integer> {
                 " INNER JOIN usuario ON empleados.codigo_empleado=usuario.codigo_empleado " +
             " WHERE p.nombre_cliente LIKE  %:descripcion% AND usuario.usuario = :userId ORDER BY p.nombre_cliente ASC", nativeQuery = true)
     List<Cliente> findByNombreVendedorOrderByNombreAsc(@Param("descripcion") String descripcion,  @Param("userId") String userId);
+
+    // US-019: variante paginada de la busqueda por vendedor (GET /customers).
+    @Query(value = "SELECT p.* FROM cliente AS p " +
+            " INNER JOIN empleados ON p.id_vendedor=empleados.codigo_empleado " +
+            " INNER JOIN usuario ON empleados.codigo_empleado=usuario.codigo_empleado " +
+            " WHERE p.nombre_cliente LIKE %:descripcion% AND usuario.usuario = :userId ORDER BY p.nombre_cliente ASC",
+            countQuery = "SELECT count(*) FROM cliente AS p " +
+            " INNER JOIN empleados ON p.id_vendedor=empleados.codigo_empleado " +
+            " INNER JOIN usuario ON empleados.codigo_empleado=usuario.codigo_empleado " +
+            " WHERE p.nombre_cliente LIKE %:descripcion% AND usuario.usuario = :userId",
+            nativeQuery = true)
+    Page<Cliente> searchByVendedor(@Param("descripcion") String descripcion, @Param("userId") String userId, Pageable pageable);
 }
