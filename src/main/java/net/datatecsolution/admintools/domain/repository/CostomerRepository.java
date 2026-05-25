@@ -8,4 +8,5 @@ import java.util.Optional;
 public interface CostomerRepository {
     List<Costomer> getAll();
     Optional<List<Costomer>> getByNameAndUser(String name, String user);
+    Optional<Costomer> getById(int id);
 }

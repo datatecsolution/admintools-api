@@ -1,0 +1,59 @@
+package net.datatecsolution.admintools.web.exception;
+
+import jakarta.persistence.EntityNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.util.List;
+
+/**
+ * Manejo de excepciones centralizado para todos los controllers REST.
+ * Reemplaza el patron previo donde cada controller devolvia ResponseEntity
+ * de error a mano. Introducido en US-019.
+ */
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /** Falla de @Valid en un DTO de entrada -> 400 con el detalle por campo. */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
+        List<String> details = ex.getBindingResult().getFieldErrors().stream()
+                .map(e -> e.getField() + ": " + e.getDefaultMessage())
+                .toList();
+        return ResponseEntity.badRequest()
+                .body(new ApiErrorResponse(HttpStatus.BAD_REQUEST.value(),
+                        "Validacion fallida", details));
+    }
+
+    /** Recurso no encontrado -> 404. */
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleNotFound(EntityNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse(HttpStatus.NOT_FOUND.value(),
+                        ex.getMessage(), List.of()));
+    }
+
+    /** Argumento ilegal de negocio -> 400. */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity.badRequest()
+                .body(new ApiErrorResponse(HttpStatus.BAD_REQUEST.value(),
+                        ex.getMessage(), List.of()));
+    }
+
+    /** Cualquier otra excepcion no controlada -> 500, sin filtrar el stacktrace al cliente. */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiErrorResponse> handleGeneric(Exception ex) {
+        log.error("Error no controlado", ex);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ApiErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                        "Error interno del servidor", List.of()));
+    }
+}

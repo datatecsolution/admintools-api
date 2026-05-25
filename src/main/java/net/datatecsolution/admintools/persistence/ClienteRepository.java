@@ -31,4 +31,9 @@ public class ClienteRepository implements CostomerRepository {
         List<Cliente> clientes= clienteCRUD.findByNombreVendedorOrderByNombreAsc(name, user);
         return Optional.of(mapper.toCostomers(clientes));
     }
+
+    @Override
+    public Optional<Costomer> getById(int id) {
+        return clienteCRUD.findById(id).map(mapper::toCostomer);
+    }
 }

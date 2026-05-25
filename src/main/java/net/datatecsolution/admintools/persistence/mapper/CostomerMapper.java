@@ -1,6 +1,7 @@
 package net.datatecsolution.admintools.persistence.mapper;
 
 import net.datatecsolution.admintools.domain.Costomer;
+import net.datatecsolution.admintools.domain.dto.CustomerResponse;
 import net.datatecsolution.admintools.persistence.entity.Cliente;
 import org.mapstruct.InheritInverseConfiguration;
 import org.mapstruct.Mapper;
@@ -30,4 +31,14 @@ public interface CostomerMapper {
     Cliente toCliente(Costomer costomer);
 
     List<Costomer> toCostomers(List<Cliente> clientes);
+
+    // US-019: mapeo POJO de dominio -> DTO de salida (contrato JSON limpio).
+    @Mappings({
+            @Mapping(source = "costomerId", target = "id"),
+            @Mapping(source = "costomerName", target = "name"),
+            @Mapping(source = "costomerRTN", target = "rtn"),
+            @Mapping(source = "costomerAdress", target = "address"),
+            @Mapping(source = "costomerTelephoneNumber", target = "phone")
+    })
+    CustomerResponse toResponse(Costomer costomer);
 }
