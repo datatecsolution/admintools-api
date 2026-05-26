@@ -216,25 +216,27 @@ Dos sub-carreras:
 
 ### 9.2 La solución (DB-only)
 
-**(a) Serializar por (artículo, bodega) — el primer acceso al header es un locking read** (en el trigger, donde se ubica/crea el kardex):
+**(a) Serializar por (artículo, bodega) bloqueando el HEADER `articulo_kardex`** (fila estable, una por artículo+bodega). Debe ser el PRIMER statement del SP:
 ```sql
-SELECT codigo_kardex INTO v_k
+SELECT codigo_kardex INTO v_lock_dummy
 FROM articulo_kardex
-WHERE codigo_articulo = NEW.codigo_articulo AND codigo_bodega = <bodega>
+WHERE codigo_kardex = p_cod_kardex
 FOR UPDATE;          -- la 2ª transacción espera el commit de la 1ª
 ```
+> Por qué el header y no el saldo: `... ORDER BY DESC LIMIT 1 FOR UPDATE` **bloquea la fila identificada como "última" en ese momento**, no re-evalúa cuando se libera. La segunda sesión leería la fila vieja, no la nueva insertada por la primera. Validado empíricamente — ver §9.4. El header es estable → seguro.
 
-**(b) Leer el saldo como locking read dentro de los SPs:**
+**(b) Leer el saldo TAMBIÉN como locking read** (current read, bypassa snapshot de REPEATABLE READ):
 ```sql
-SELECT mk.cantidad INTO existencia_old
+SELECT mk.cantidad, mk.total, mk.precio_unidad
+  INTO existencia_old, total_old, precio_old
 FROM articulo_kardex ak
 JOIN detalle_movimiento_kardex dmk ON ak.codigo_kardex = dmk.codigo_kardex
-JOIN movimiento_kardex mk ON dmk.codigo_movimiento = mk.codigo_movimiento
+JOIN movimiento_kardex mk        ON dmk.codigo_movimiento = mk.codigo_movimiento
 WHERE ak.codigo_kardex = p_cod_kardex AND mk.codigo_tipo_movimiento = 3
 ORDER BY dmk.codigo_movimiento DESC LIMIT 1
-FOR UPDATE;          -- current read: lee el último COMMIT, no el snapshot
+FOR UPDATE;          -- current read: bypassa snapshot establecido por las lecturas previas del trigger
 ```
-Los locking reads hacen *current read* (leen el último commit, no el snapshot de REPEATABLE READ); tras el commit de A, B lee 164 y calcula 159 ✅.
+> Por qué también con lock: los triggers hacen lecturas planas ANTES del `CALL` (buscar `cod_kardex`, leer `tipo_articulo`). Esas lecturas **establecen el snapshot de REPEATABLE READ** del transaction. Si la lectura del saldo en el SP fuera no-locking, leería del snapshot (datos previos al commit de la sesión A) aunque el header ya esté lockeado. Con FOR UPDATE hace *current read* → ve los datos commiteados más recientes.
 
 **(c) UNIQUE para impedir headers duplicados:**
 ```sql
@@ -288,8 +290,28 @@ Comportamiento resultante:
 
 > Implicación frontend: las cajas/API deben **manejar el error SQL** (ya no asumir que toda venta enviada se commitea). Es un cambio menor en el manejo de errores del flujo de venta.
 
-### 9.4 Validación obligatoria antes de prod
-InnoDB tiene semántica sutil de snapshot vs locking. La solución **DEBE validarse con un test de concurrencia real** (dos sesiones simultáneas haciendo `CALL` sobre el mismo artículo+bodega) que demuestre saldo final correcto, ANTES de migrar producción. Se prototipa y prueba en `admin_tools` local, sin tocar los SPs reales hasta validar.
+### 9.4 Validación — PROTOTIPO PROBADO (2026-05-25)
+
+Prototipado y probado contra `admin_tools` local con kardex de prueba aislado (artículo `319694`, eliminado tras el test). 3 escenarios concurrentes (dos sesiones simultáneas envueltas en `START TRANSACTION ... COMMIT`, simulando el contexto del trigger):
+
+| # | Modo | Cantidades | Saldo inicial | Esperado | Obtenido | Tiempo |
+|---|---|---|---|---|---|---|
+| A | permisivo (=1) | 3 + 5 | 167 | 159 | **159** ✅ | 4s |
+| B | bloqueado (=0), no cabe | 100 + 100 | 167 | 67 + SIGNAL | **67** ✅ + `ERROR 1644 (45000) Stock insuficiente` | 4s |
+| C | bloqueado (=0), sí cabe | 30 + 30 | 167 | 107 | **107** ✅ | — |
+
+Tiempo 4s con SLEEP(2) dentro del SP = lock realmente serializa.
+
+**Nota sobre la cobertura del prototipo**: el test usó la versión con FOR UPDATE solo en el header (saldo non-locking) y pasó porque al ser un CALL directo (sin trigger), las lecturas planas previas no ocurrieron y el snapshot se estableció DESPUÉS de la espera del lock. **La versión final que va a la migración debe llevar FOR UPDATE en ambas lecturas** (§9.2.a + §9.2.b) para cubrir el contexto trigger en prod. Esto se validará en la fase de migración con una simulación que incluya las lecturas previas del trigger.
+
+### 9.4.1 Insight crítico: contexto de transacción del caller
+
+El SP solo serializa si **corre dentro de una transacción del caller**. Con `autocommit=1` + `CALL` directo desde un cliente, MySQL **auto-commitea cada statement interno del SP** → el `FOR UPDATE` libera el lock al instante y la serialización se pierde.
+
+- ✅ **En producción funciona naturalmente**: los SPs se invocan desde **triggers `BEFORE INSERT`** sobre las tablas de detalle. Un trigger corre dentro de la transacción implícita del INSERT que lo disparó → el lock del header se mantiene durante todo el trigger+SP.
+- ⚠️ **Si el API llama estos SPs vía `CALL` directo** (caso del ajuste manual deprecado, o cualquier llamada futura), DEBE envolver con `START TRANSACTION ... COMMIT` explícito, o usar `@Transactional` en Spring. Sin eso, el lock no sirve.
+
+Esto se debe documentar como invariante para cualquier código (Java o SQL) que invoque los SPs corregidos.
 
 ### 9.5 Alcance
 Afecta todos los SPs con read-modify-write de saldo: `crear_venta_kardex`, `crear_venta_insumo_kardex`, `crear_compa_kardex`, `crear_dev_venta_kardex`, `crear_dev_compa_kardex`, `crear_inventario_inicial_kardex`, `crear_requisicion_entrada_kardex`, `crear_requisicion_salida_kardex` (+ ajuste, si no se descontinúa antes) y sus triggers. La migración recrea esos objetos.
