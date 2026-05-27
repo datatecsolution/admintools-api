@@ -8,9 +8,9 @@ import jakarta.validation.constraints.Size;
  * El codigo lo asigna el sistema (max(MAX(bodega), MAX(departamento))+1)
  * para mantener el espejo con departamento.
  */
-public record BodegaRequest(
+public record WarehouseRequest(
         @NotBlank(message = "El nombre de la bodega es obligatorio")
         @Size(max = 255, message = "El nombre no puede exceder 255 caracteres")
-        String descripcion
+        String description
 ) {
 }

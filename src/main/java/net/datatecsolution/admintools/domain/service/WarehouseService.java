@@ -1,13 +1,13 @@
 package net.datatecsolution.admintools.domain.service;
 
 import jakarta.persistence.EntityNotFoundException;
-import net.datatecsolution.admintools.domain.dto.BodegaRequest;
-import net.datatecsolution.admintools.domain.dto.BodegaResponse;
+import net.datatecsolution.admintools.domain.dto.WarehouseRequest;
+import net.datatecsolution.admintools.domain.dto.WarehouseResponse;
 import net.datatecsolution.admintools.persistence.crud.BodegaCRUD;
 import net.datatecsolution.admintools.persistence.crud.DepartamentoCRUD;
 import net.datatecsolution.admintools.persistence.entity.Bodega;
 import net.datatecsolution.admintools.persistence.entity.Departamento;
-import net.datatecsolution.admintools.persistence.mapper.BodegaMapper;
+import net.datatecsolution.admintools.persistence.mapper.WarehouseMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -17,7 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 
 /**
- * CRUD de Bodegas (INV-3). Mantiene el espejo transaccional con
+ * CRUD de Warehouses (INV-3). Mantiene el espejo transaccional con
  * Departamento: ambas tablas deben tener entradas con el mismo codigo,
  * porque los triggers de requisicion del kardex usan
  * codigo_depart_origen/destino como sinonimo de codigo_bodega.
@@ -27,64 +27,63 @@ import java.util.List;
  * auto_increment independientes.
  */
 @Service
-public class BodegaService {
+public class WarehouseService {
 
     @Autowired private BodegaCRUD bodegaCRUD;
     @Autowired private DepartamentoCRUD departamentoCRUD;
-    @Autowired private BodegaMapper mapper;
+    @Autowired private WarehouseMapper mapper;
 
-    public List<BodegaResponse> getAll() {
+    public List<WarehouseResponse> getAll() {
         return mapper.toResponses(bodegaCRUD.findAll());
     }
 
-    public BodegaResponse getById(int codigo) {
-        Bodega b = bodegaCRUD.findById(codigo)
-                .orElseThrow(() -> new EntityNotFoundException("Bodega " + codigo + " no encontrada"));
+    public WarehouseResponse getById(int code) {
+        Bodega b = bodegaCRUD.findById(code)
+                .orElseThrow(() -> new EntityNotFoundException("Warehouse " + code + " not found"));
         return mapper.toResponse(b);
     }
 
     @Transactional
-    public BodegaResponse create(BodegaRequest req) {
-        int nuevoCodigo = Math.max(
+    public WarehouseResponse create(WarehouseRequest request) {
+        int newCode = Math.max(
                 bodegaCRUD.findMaxCodigoBodega(),
                 departamentoCRUD.findMaxCodigoDepartamento()
         ) + 1;
-        Bodega bodega = new Bodega(nuevoCodigo, req.descripcion());
-        Departamento departamento = new Departamento(nuevoCodigo, req.descripcion());
+        Bodega bodega = new Bodega(newCode, request.description());
+        Departamento departamento = new Departamento(newCode, request.description());
         bodegaCRUD.save(bodega);
         departamentoCRUD.save(departamento);
         return mapper.toResponse(bodega);
     }
 
     @Transactional
-    public BodegaResponse update(int codigo, BodegaRequest req) {
-        Bodega bodega = bodegaCRUD.findById(codigo)
-                .orElseThrow(() -> new EntityNotFoundException("Bodega " + codigo + " no encontrada"));
-        bodega.setDescripcionBodega(req.descripcion());
+    public WarehouseResponse update(int code, WarehouseRequest request) {
+        Bodega bodega = bodegaCRUD.findById(code)
+                .orElseThrow(() -> new EntityNotFoundException("Warehouse " + code + " not found"));
+        bodega.setDescripcionBodega(request.description());
         bodegaCRUD.save(bodega);
         // mantener espejo: si el departamento existe lo actualizamos; si no
         // (estado inconsistente heredado), lo creamos para reparar el espejo.
-        Departamento depto = departamentoCRUD.findById(codigo)
-                .orElseGet(() -> new Departamento(codigo, null));
-        depto.setNombre(req.descripcion());
+        Departamento depto = departamentoCRUD.findById(code)
+                .orElseGet(() -> new Departamento(code, null));
+        depto.setNombre(request.description());
         departamentoCRUD.save(depto);
         return mapper.toResponse(bodega);
     }
 
     @Transactional
-    public void delete(int codigo) {
-        if (!bodegaCRUD.existsById(codigo)) {
-            throw new EntityNotFoundException("Bodega " + codigo + " no encontrada");
+    public void delete(int code) {
+        if (!bodegaCRUD.existsById(code)) {
+            throw new EntityNotFoundException("Warehouse " + code + " not found");
         }
-        // proteccion basica: no permitir borrar Tienda Principal (codigo 1) ni
-        // bodegas con cualquier rastro en articulo_kardex. Esto evita romper
-        // el inventario por accidente. Un borrado mas sofisticado (cascada
-        // controlada o "deshabilitar") seria una mejora futura.
-        if (codigo == 1) {
+        // proteccion basica: no permitir borrar Tienda Principal (codigo 1).
+        // Un borrado mas sofisticado (cascada controlada o "deshabilitar")
+        // seria una mejora futura.
+        if (code == 1) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "No se puede eliminar la bodega 1 (Tienda Principal)");
+                    "Cannot delete warehouse 1 (Main Store)");
         }
-        bodegaCRUD.deleteById(codigo);
-        departamentoCRUD.findById(codigo).ifPresent(departamentoCRUD::delete);
+        bodegaCRUD.deleteById(code);
+        departamentoCRUD.findById(code).ifPresent(departamentoCRUD::delete);
     }
 }
