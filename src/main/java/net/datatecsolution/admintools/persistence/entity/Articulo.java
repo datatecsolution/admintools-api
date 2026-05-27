@@ -58,7 +58,7 @@ public class Articulo {
     private List<PrecioArticulo> precioArticulos;
 
     @OneToMany(mappedBy = "articulo")
-    private List<DetalleFactura> detalleFacturas;
+    private List<DetalleOrden> detallesOrden;
 
     @Transient
     private Integer posicionPrecio = 0;
@@ -267,12 +267,12 @@ public class Articulo {
         this.precioCompra = precioCompra;
     }
 
-    public List<DetalleFactura> getDetalleFacturas() {
-        return detalleFacturas;
+    public List<DetalleOrden> getDetallesOrden() {
+        return detallesOrden;
     }
 
-    public void setDetalleFacturas(List<DetalleFactura> detalleFacturas) {
-        this.detalleFacturas = detalleFacturas;
+    public void setDetallesOrden(List<DetalleOrden> detallesOrden) {
+        this.detallesOrden = detallesOrden;
     }
 
     public Double getExistencia() {
