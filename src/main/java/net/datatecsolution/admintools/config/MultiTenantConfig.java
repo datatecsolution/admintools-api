@@ -19,29 +19,25 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * US-017 — Multi-tenant DataSource config.
+ * US-017 + INV-8 — DataSources y EntityManagerFactories multi-tenant.
  *
- * Dos arboles de conexion:
+ * Dos arboles de persistencia:
  *
- *  commonDataSource (@Primary)
- *      → admin_tools   — entities globales (Cliente, Articulo, Bodega,
- *                        Existencia, Compras, etc.). Las JpaRepositories
- *                        existentes usan este por default.
+ *  commonDataSource (@Primary) → admin_tools
+ *      JPA repos en {@code persistence.crud} → entities en {@code persistence.entity}
+ *      (Cliente, Articulo, Bodega, Orden, ExistenciaArticuloBodega, etc.)
+ *      Wiring de EMF/TM: {@link JpaConfigCommon}
  *
- *  tenantRoutingDataSource
- *      → admin_tools_caja_N — AbstractRoutingDataSource resuelve la caja
- *                              via TenantContext (poblado por TenantInterceptor).
- *                              Hoy usado por JdbcTemplate del smoke test;
- *                              INV-8 le agrega su propio EMF/TM con
- *                              entities Factura/DetalleFactura.
+ *  tenantRoutingDataSource → admin_tools_caja_N
+ *      AbstractRoutingDataSource que resuelve la caja via {@link TenantContext}.
+ *      JPA repos en {@code persistence.tenant.crud} → entities en
+ *      {@code persistence.tenant.entity} (EncabezadoFactura, DetalleFactura).
+ *      Wiring de EMF/TM: {@link JpaConfigTenant}.
+ *      Las cajas se descubren al boot leyendo admin_tools.cajas.nombre_db.
  *
- * Cuando se declaran DataSources manualmente, Spring Boot deja de
- * autoconfigurar JPA — hay que declarar tambien EntityManagerFactory y
- * TransactionManager. Lo hacemos aqui con @Primary para que toda la JPA
- * actual siga apuntando al commonDS sin cambios.
- *
- * Las cajas se descubren al boot leyendo {@code admin_tools.cajas.nombre_db}.
- * Reinicio del API requerido si se agrega caja en BD (mejora futura: refresh).
+ * Al declarar DataSources manualmente, Spring Boot deja de autoconfigurar JPA
+ * — por eso las EMF/TM viven en las dos clases JpaConfig*, con esta clase solo
+ * encargada de los pools.
  */
 @Configuration
 public class MultiTenantConfig {
@@ -89,32 +85,6 @@ public class MultiTenantConfig {
         ds.setMaximumPoolSize(10);
         ds.setMinimumIdle(2);
         return ds;
-    }
-
-    @Bean
-    @Primary
-    public LocalContainerEntityManagerFactoryBean entityManagerFactory(
-            @Qualifier("commonDataSource") DataSource ds,
-            JpaProperties jpaProperties) {
-        var emf = new LocalContainerEntityManagerFactoryBean();
-        emf.setDataSource(ds);
-        emf.setPackagesToScan("net.datatecsolution.admintools.persistence.entity");
-        emf.setPersistenceUnitName("common");
-        emf.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-
-        Map<String, Object> props = new HashMap<>(jpaProperties.getProperties());
-        // ddl-auto se setea como spring.jpa.hibernate.ddl-auto (raiz, no nested);
-        // JpaProperties.getProperties() solo trae spring.jpa.properties.*
-        props.put("hibernate.hbm2ddl.auto", hibernateDdlAuto);
-        emf.setJpaPropertyMap(props);
-        return emf;
-    }
-
-    @Bean
-    @Primary
-    public PlatformTransactionManager transactionManager(
-            @Qualifier("entityManagerFactory") LocalContainerEntityManagerFactoryBean emf) {
-        return new JpaTransactionManager(emf.getObject());
     }
 
     // ============= Tenant Routing DataSource (admin_tools_caja_N) =============
@@ -166,5 +136,35 @@ public class MultiTenantConfig {
         ds.setMaximumPoolSize(5);
         ds.setMinimumIdle(1);
         return ds;
+    }
+
+    // ============= Tenant EntityManagerFactory + TransactionManager =============
+    // Solo escanea persistence.tenant.entity. Las repos que lo usen viven en
+    // persistence.tenant.crud (ver JpaConfigTenant). El DataSource detras es el
+    // routing — la BD real (caja_1, caja_2…) se elige por request via TenantContext.
+
+    @Bean(name = "tenantEntityManagerFactory")
+    public LocalContainerEntityManagerFactoryBean tenantEntityManagerFactory(
+            @Qualifier("tenantRoutingDataSource") DataSource tenantDs,
+            JpaProperties jpaProperties) {
+        var emf = new LocalContainerEntityManagerFactoryBean();
+        emf.setDataSource(tenantDs);
+        emf.setPackagesToScan("net.datatecsolution.admintools.persistence.tenant.entity");
+        emf.setPersistenceUnitName("tenant");
+        emf.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
+
+        Map<String, Object> props = new HashMap<>(jpaProperties.getProperties());
+        // tenant siempre con ddl-auto=none: NO queremos que Hibernate intente
+        // validar/crear schema contra una caja, son N BDs y el schema lo
+        // maneja Flyway via Swing (V8 y baselines).
+        props.put("hibernate.hbm2ddl.auto", "none");
+        emf.setJpaPropertyMap(props);
+        return emf;
+    }
+
+    @Bean(name = "tenantTransactionManager")
+    public PlatformTransactionManager tenantTransactionManager(
+            @Qualifier("tenantEntityManagerFactory") LocalContainerEntityManagerFactoryBean emf) {
+        return new JpaTransactionManager(emf.getObject());
     }
 }
