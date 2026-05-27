@@ -2,8 +2,6 @@ package net.datatecsolution.admintools.persistence.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
@@ -21,8 +19,7 @@ public class Bodega {
 
     @Id
     @Column(name = "codigo_bodega")
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer codigoBodega;
+    private Integer codigoBodega;   // INV-3 lo asigna a mano para sincronizar con Departamento
 
     @Column(name = "descripcion_bodega")
     private String descripcionBodega;
