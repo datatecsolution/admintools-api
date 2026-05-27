@@ -28,6 +28,21 @@ public class Usuario implements UserDetails {
     @Column(name = "clave", nullable = false)
     private String contraseniaUsuario;
 
+    /**
+     * Nivel de permiso del Swing legacy. Fuente unica de verdad de roles:
+     *   4 = root       -> ROLE_ADMIN
+     *   1 = supervisor -> ROLE_INVENTORY
+     *   2 = cajero     -> ROLE_CASHIER
+     *   3 = vendedor   -> ROLE_SELLER
+     *   otro/null      -> ROLE_USER
+     *
+     * El mapeo se hace en CustomUserDetailsService; la tabla authorities
+     * (que existe del setup inicial Spring Security) queda historica y NO
+     * se consulta.
+     */
+    @Column(name = "tipo_permiso")
+    private Integer tipoPermiso;
+
     @OneToMany(mappedBy = "usuario", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private Set<Authority> authorities = new HashSet<>();
 
@@ -91,6 +106,14 @@ public class Usuario implements UserDetails {
 
     public void setContraseniaUsuario(String contraseniaUsuario) {
         this.contraseniaUsuario = contraseniaUsuario;
+    }
+
+    public Integer getTipoPermiso() {
+        return tipoPermiso;
+    }
+
+    public void setTipoPermiso(Integer tipoPermiso) {
+        this.tipoPermiso = tipoPermiso;
     }
 
     public List<UsuarioPrecio> getPrecios() {

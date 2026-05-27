@@ -198,13 +198,16 @@ public class SecurityConfig {
         // ============================================================
         // US-021 — Role hierarchy
         //
-        // Un solo rol por usuario implica todos los menores. Asi:
-        //   - admin (ROLE_ADMIN)      hace todo
-        //   - ventas (ROLE_INVENTORY) hace compras + ventas + lecturas
-        //   - caja1 (ROLE_CASHIER)    factura + ordena + lee
-        //   - tecnico (ROLE_USER)     solo lee
+        // Mapeo desde usuario.tipo_permiso (Swing) → ROLE_*
+        // (en CustomUserDetailsService):
+        //   4 root       -> ROLE_ADMIN
+        //   1 supervisor -> ROLE_INVENTORY
+        //   2 cajero     -> ROLE_CASHIER
+        //   3 vendedor   -> ROLE_SELLER
+        //   otro/null    -> ROLE_USER
         //
-        // Esto evita asignar 4 authorities por usuario; basta el mas alto.
+        // Jerarquia: un solo rol implica todos los menores.
+        // Vendedor crea ordenes pero NO factura (ROLE_SELLER < CASHIER).
         // ============================================================
 
         /**
@@ -220,7 +223,8 @@ public class SecurityConfig {
                 r.setHierarchy(
                                 "ROLE_ADMIN > ROLE_INVENTORY\n" +
                                 "ROLE_INVENTORY > ROLE_CASHIER\n" +
-                                "ROLE_CASHIER > ROLE_USER");
+                                "ROLE_CASHIER > ROLE_SELLER\n" +
+                                "ROLE_SELLER > ROLE_USER");
                 return r;
         }
 

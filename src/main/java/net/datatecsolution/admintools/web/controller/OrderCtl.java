@@ -32,7 +32,7 @@ public class OrderCtl {
     }
 
     @PostMapping("/save")
-    @PreAuthorize("hasRole('CASHIER')")   // US-021
+    @PreAuthorize("hasRole('SELLER')")   // US-021: vendedor crea ordenes (no factura)
     public ResponseEntity<Object> save(@RequestBody Order order, java.security.Principal principal) {
         String user = principal.getName();
 
@@ -56,7 +56,7 @@ public class OrderCtl {
     }
 
     @DeleteMapping("/delete/{id}")
-    @PreAuthorize("hasRole('CASHIER')")   // US-021
+    @PreAuthorize("hasRole('SELLER')")   // US-021: el dueno de la orden la borra (vendedor o superior)
     public ResponseEntity delete(@PathVariable("id") int orderId, java.security.Principal principal) {
         // se tiene que enviar el usuario para verificar que la orden le pertenece
         String user = principal.getName();
