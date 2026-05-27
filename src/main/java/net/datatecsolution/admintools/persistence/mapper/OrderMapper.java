@@ -1,7 +1,7 @@
 package net.datatecsolution.admintools.persistence.mapper;
 
 import net.datatecsolution.admintools.domain.Order;
-import net.datatecsolution.admintools.persistence.entity.Factura;
+import net.datatecsolution.admintools.persistence.entity.Orden;
 import org.mapstruct.InheritInverseConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -27,17 +27,16 @@ public interface OrderMapper {
             @Mapping(source = "detalles", target = "details")
 
     })
-    Order toOrder(Factura factura);
+    Order toOrder(Orden orden);
 
     @InheritInverseConfiguration
     @Mappings({
             @Mapping(target = "vendedor", ignore = true),
-            //@Mapping(target = "vendedorCod", ignore = true),
             @Mapping(target = "cliente", ignore = true)
 
     })
-    Factura toFactura(Order order);
+    Orden toOrden(Order order);
 
-    List<Order> toOrders(List<Factura> facturas);
+    List<Order> toOrders(List<Orden> ordenes);
 
 }

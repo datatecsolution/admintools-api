@@ -18,21 +18,28 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Implementacion del {@link OrderRepository} del dominio. Antes se llamaba
+ * {@code FacturaRepository} porque el entity subyacente se llamaba
+ * {@code Factura}, pero esta tabla ({@code encabezado_factura_temp}) guarda
+ * ordenes, no facturas — el rename a {@link Orden} + {@link DetalleOrden}
+ * dejo libre el nombre {@code Factura} para las definitivas de INV-8.
+ */
 @Repository
-public class FacturaRepository implements OrderRepository {
+public class OrdenRepository implements OrderRepository {
 
-    private static final Logger log = LoggerFactory.getLogger(FacturaRepository.class);
+    private static final Logger log = LoggerFactory.getLogger(OrdenRepository.class);
 
     @Value("${app.timezone:America/Tegucigalpa}")
     private String timezoneId;
 
     @Autowired
-    private FacturaCRUD facturaCRUD;
+    private OrdenCRUD ordenCRUD;
     @Autowired
     private EmpleadoCRUD empleadoCRUD;
 
     @Autowired
-    private DetalleFacturaCRUD detalleFacturaCRUD;
+    private DetalleOrdenCRUD detalleOrdenCRUD;
     @Autowired
     private ArticuloCRUD articuloCRUD;
 
@@ -43,65 +50,65 @@ public class FacturaRepository implements OrderRepository {
     private OrderMapper mapper;
     @Override
     public List<Order> getAll() {
-        List<Factura> facturas = (List<Factura>) facturaCRUD.getAllByOrderByFechaDesc();
-        return mapper.toOrders(facturas);
+        List<Orden> ordenes = (List<Orden>) ordenCRUD.getAllByOrderByFechaDesc();
+        return mapper.toOrders(ordenes);
     }
 
     @Override
     public Order save(Order order, String user) {
-        Factura factura = mapper.toFactura(order);
-        log.debug("save() inicial idFactura={}", factura.getIdFactura());
+        Orden orden = mapper.toOrden(order);
+        log.debug("save() inicial idFactura={}", orden.getIdFactura());
 
-        if (factura.getIdFactura() == null) {
+        if (orden.getIdFactura() == null) {
             Optional<Empleado> empleado = empleadoCRUD.findById(order.getSellerId());
             if (empleado.isPresent()) {
-                factura.setVendedor(empleado.get());
-                factura.setVendedorCod(empleado.get().getCodigo());
+                orden.setVendedor(empleado.get());
+                orden.setVendedorCod(empleado.get().getCodigo());
             }
 
             // se completa los detalles para poder guardarlos
-            for (DetalleFactura detalleFactura : factura.getDetalles()) {
-                Optional<Articulo> articulo = articuloCRUD.findById(detalleFactura.getCodigoArt());
+            for (DetalleOrden detalleOrden : orden.getDetalles()) {
+                Optional<Articulo> articulo = articuloCRUD.findById(detalleOrden.getCodigoArt());
                 if (articulo.isPresent()) {
-                    detalleFactura.setArticulo(articulo.get());
-                    detalleFactura.setCodigoArt(articulo.get().getArticuloId());
-                    detalleFactura.setFactura(factura);
+                    detalleOrden.setArticulo(articulo.get());
+                    detalleOrden.setCodigoArt(articulo.get().getArticuloId());
+                    detalleOrden.setOrden(orden);
                 }
             }
 
-            factura.calcularTotales();
-            Factura savedFactura = facturaCRUD.save(factura);
-            return mapper.toOrder(savedFactura);
+            orden.calcularTotales();
+            Orden savedOrden = ordenCRUD.save(orden);
+            return mapper.toOrder(savedOrden);
         } else {
             log.debug("save() actualizando idFactura={} con {} detalles",
-                    factura.getIdFactura(), factura.getDetalles().size());
+                    orden.getIdFactura(), orden.getDetalles().size());
 
             // Preservar fecha original: la React no envia el campo `date` en
-            // el payload de update, asi que `factura.fecha` viene null del
+            // el payload de update, asi que `orden.fecha` viene null del
             // mapper. @PrePersist solo dispara en INSERT, NO en MERGE, asi
             // que sin esto JPA escribiria fecha=NULL → MySQL coerce a
             // '0000-00-00' → la orden desaparece del filtro getByToday.
-            if (factura.getFecha() == null) {
-                facturaCRUD.findById(factura.getIdFactura())
-                        .ifPresent(existente -> factura.setFecha(existente.getFecha()));
+            if (orden.getFecha() == null) {
+                ordenCRUD.findById(orden.getIdFactura())
+                        .ifPresent(existente -> orden.setFecha(existente.getFecha()));
             }
 
             Optional<Empleado> empleado = empleadoCRUD.findById(order.getSellerId());
-            empleado.ifPresent(factura::setVendedor);
+            empleado.ifPresent(orden::setVendedor);
 
             // se completa los detalles para poder guardarlos
-            for (DetalleFactura detalleFactura : factura.getDetalles()) {
-                log.debug("save() detalle codigoArt={}", detalleFactura.getCodigoArt());
-                Optional<Articulo> articulo = articuloCRUD.findById(detalleFactura.getCodigoArt());
+            for (DetalleOrden detalleOrden : orden.getDetalles()) {
+                log.debug("save() detalle codigoArt={}", detalleOrden.getCodigoArt());
+                Optional<Articulo> articulo = articuloCRUD.findById(detalleOrden.getCodigoArt());
                 if (articulo.isPresent()) {
-                    detalleFactura.setArticulo(articulo.get());
-                    detalleFactura.setCodigoArt(articulo.get().getArticuloId());
+                    detalleOrden.setArticulo(articulo.get());
+                    detalleOrden.setCodigoArt(articulo.get().getArticuloId());
                 }
-                detalleFactura.setFactura(factura);
+                detalleOrden.setOrden(orden);
             }
 
-            factura.calcularTotales();
-            return mapper.toOrder(facturaCRUD.save(factura));
+            orden.calcularTotales();
+            return mapper.toOrder(ordenCRUD.save(orden));
         }
     }
 
@@ -124,38 +131,38 @@ public class FacturaRepository implements OrderRepository {
         LocalDateTime finDelDia = hoy.atTime(23, 59, 59).atZone(hondurasZone)
                 .withZoneSameInstant(jvmZone)
                 .toLocalDateTime();
-        List<Factura> facturas = (List<Factura>) facturaCRUD.findByFechaIsBetweenAndUsuarioOrderByFechaDesc(inicioDelDia, finDelDia,user);
+        List<Orden> ordenes = (List<Orden>) ordenCRUD.findByFechaIsBetweenAndUsuarioOrderByFechaDesc(inicioDelDia, finDelDia,user);
 
-        //se recorre las facturas para cambiar los precios que puede cambiar el usuario
-        for (Factura factura : facturas) {
-            for (DetalleFactura detalleFactura : factura.getDetalles()) {
+        //se recorre las ordenes para cambiar los precios que puede cambiar el usuario
+        for (Orden orden : ordenes) {
+            for (DetalleOrden detalleOrden : orden.getDetalles()) {
 
                 List<PrecioArticulo> precios = new ArrayList<>();
 
                 //se buscan los precios que puede aplicar el usuario
-                precios = preciosArticuloCRUD.findPrecioUser(detalleFactura.getCodigoArt(), user);
+                precios = preciosArticuloCRUD.findPrecioUser(detalleOrden.getCodigoArt(), user);
 
                 //se establece los precios
 
                 //si los precios existen se aplican al articulo
                 if (precios != null) {
-                    detalleFactura.getArticulo().setPrecioArticulos(precios);
+                    detalleOrden.getArticulo().setPrecioArticulos(precios);
                 } else {
-                    detalleFactura.getArticulo().getPrecioArticulos().clear();
-                    detalleFactura.getArticulo().setPrecioArticulos(new ArrayList<>());
+                    detalleOrden.getArticulo().getPrecioArticulos().clear();
+                    detalleOrden.getArticulo().setPrecioArticulos(new ArrayList<>());
                 }
             }
         }
-        return mapper.toOrders(facturas);
+        return mapper.toOrders(ordenes);
     }
     @Override
     public Optional<Order> getOrderUser(int orderId, String user){
-        return Optional.of(mapper.toOrder(facturaCRUD.findByIdFacturaAndUsuario(orderId,user)));
+        return Optional.of(mapper.toOrder(ordenCRUD.findByIdFacturaAndUsuario(orderId,user)));
     }
 
     @Override
     public void delete(int orderId) {
-        facturaCRUD.deleteById(orderId);
+        ordenCRUD.deleteById(orderId);
     }
 
 }
