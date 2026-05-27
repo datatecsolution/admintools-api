@@ -11,6 +11,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -39,6 +40,7 @@ public class PurchaseReturnCtl {
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('INVENTORY')")   // US-021
     @Operation(summary = "Crear devolucion de una compra (uno o varios items en una transaccion)")
     public ResponseEntity<PurchaseReturnResponse> create(@Valid @RequestBody PurchaseReturnRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(request));

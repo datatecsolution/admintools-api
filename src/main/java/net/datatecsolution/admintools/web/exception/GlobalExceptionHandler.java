@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -46,6 +47,17 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleResponseStatus(ResponseStatusException ex) {
         return ResponseEntity.status(ex.getStatusCode())
                 .body(new ApiErrorResponse(ex.getStatusCode().value(), ex.getReason(), List.of()));
+    }
+
+    /**
+     * @PreAuthorize denegado (US-021) -> 403. Sin este handler, AccessDenied
+     * caeria al genericExceptionHandler y devolveria 500 al cliente.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiErrorResponse> handleAccessDenied(AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ApiErrorResponse(HttpStatus.FORBIDDEN.value(),
+                        "Acceso denegado: el usuario no tiene el rol requerido", List.of()));
     }
 
     /** Argumento ilegal de negocio -> 400. */

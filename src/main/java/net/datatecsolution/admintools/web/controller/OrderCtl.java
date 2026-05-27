@@ -6,6 +6,7 @@ import net.datatecsolution.admintools.domain.service.OrderService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -31,6 +32,7 @@ public class OrderCtl {
     }
 
     @PostMapping("/save")
+    @PreAuthorize("hasRole('SELLER')")   // US-021: vendedor crea ordenes (no factura)
     public ResponseEntity<Object> save(@RequestBody Order order, java.security.Principal principal) {
         String user = principal.getName();
 
@@ -54,6 +56,7 @@ public class OrderCtl {
     }
 
     @DeleteMapping("/delete/{id}")
+    @PreAuthorize("hasRole('SELLER')")   // US-021: el dueno de la orden la borra (vendedor o superior)
     public ResponseEntity delete(@PathVariable("id") int orderId, java.security.Principal principal) {
         // se tiene que enviar el usuario para verificar que la orden le pertenece
         String user = principal.getName();

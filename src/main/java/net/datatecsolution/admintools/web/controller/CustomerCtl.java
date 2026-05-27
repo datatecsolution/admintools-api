@@ -10,6 +10,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -60,6 +61,7 @@ public class CustomerCtl {
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")   // US-021
     @Operation(summary = "Crear un cliente para el vendedor autenticado")
     public ResponseEntity<CustomerResponse> create(@Valid @RequestBody CustomerCreateRequest request,
                                                    Principal principal) {
@@ -68,6 +70,7 @@ public class CustomerCtl {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")   // US-021
     @Operation(summary = "Actualizar un cliente existente")
     public ResponseEntity<CustomerResponse> update(@PathVariable int id,
                                                    @Valid @RequestBody CustomerCreateRequest request) {
@@ -75,6 +78,7 @@ public class CustomerCtl {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")   // US-021
     @Operation(summary = "Eliminar un cliente")
     public ResponseEntity<Void> delete(@PathVariable int id) {
         customerService.delete(id);

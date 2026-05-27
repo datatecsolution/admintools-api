@@ -10,6 +10,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -41,6 +42,7 @@ public class PurchaseCtl {
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('INVENTORY')")   // US-021
     @Operation(summary = "Crear una compra (header + lineas → stock sube via trigger)")
     public ResponseEntity<PurchaseResponse> create(@Valid @RequestBody PurchaseRequest request,
                                                    Principal principal) {
