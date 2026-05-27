@@ -7,6 +7,11 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
+import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
+import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -23,6 +28,7 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity   // US-021: habilita @PreAuthorize en controllers / services
 public class SecurityConfig {
 
         private final CustomUserDetailsService customUserDetailsService;
@@ -187,5 +193,51 @@ public class SecurityConfig {
         public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration)
                         throws Exception {
                 return authenticationConfiguration.getAuthenticationManager();
+        }
+
+        // ============================================================
+        // US-021 — Role hierarchy
+        //
+        // Un solo rol por usuario implica todos los menores. Asi:
+        //   - admin (ROLE_ADMIN)      hace todo
+        //   - ventas (ROLE_INVENTORY) hace compras + ventas + lecturas
+        //   - caja1 (ROLE_CASHIER)    factura + ordena + lee
+        //   - tecnico (ROLE_USER)     solo lee
+        //
+        // Esto evita asignar 4 authorities por usuario; basta el mas alto.
+        // ============================================================
+
+        /**
+         * STATIC a proposito (mismo motivo que methodSecurityExpressionHandler
+         * abajo): los beans usados por la infra de @EnableMethodSecurity tienen
+         * que estar disponibles antes de que se construyan los
+         * AuthorizationManager. Sin static, el bean se resuelve tarde y la
+         * jerarquia no llega a aplicarse — hasRole() sigue siendo match literal.
+         */
+        @Bean
+        static RoleHierarchy roleHierarchy() {
+                RoleHierarchyImpl r = new RoleHierarchyImpl();
+                r.setHierarchy(
+                                "ROLE_ADMIN > ROLE_INVENTORY\n" +
+                                "ROLE_INVENTORY > ROLE_CASHIER\n" +
+                                "ROLE_CASHIER > ROLE_USER");
+                return r;
+        }
+
+        /**
+         * Necesario para que {@code @PreAuthorize("hasRole(...)")} respete la
+         * jerarquia. Sin este bean, hasRole solo matchea el rol literal.
+         *
+         * STATIC a proposito: en Spring Security 6 los AuthorizationManager
+         * de @EnableMethodSecurity se inicializan temprano en el ciclo de
+         * BeanPostProcessors. Si el bean no es static, su factory method se
+         * resuelve TARDE y la jerarquia no llega a aplicarse — los hasRole()
+         * siguen siendo match literal. Hacerlo static lo cablea antes.
+         */
+        @Bean
+        static MethodSecurityExpressionHandler methodSecurityExpressionHandler(RoleHierarchy roleHierarchy) {
+                DefaultMethodSecurityExpressionHandler handler = new DefaultMethodSecurityExpressionHandler();
+                handler.setRoleHierarchy(roleHierarchy);
+                return handler;
         }
 }

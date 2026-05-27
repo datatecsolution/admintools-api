@@ -7,6 +7,7 @@ import net.datatecsolution.admintools.domain.service.InvoiceService;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,6 +36,7 @@ public class InvoiceCtl {
     }
 
     @PostMapping("/from-order/{orderId}")
+    @PreAuthorize("hasRole('CASHIER')")   // US-021
     @Operation(summary = "Crear factura desde una orden temporal — descuenta inventario via trigger")
     public ResponseEntity<InvoiceResponse> createFromOrder(@PathVariable int orderId,
                                                            Principal principal) {

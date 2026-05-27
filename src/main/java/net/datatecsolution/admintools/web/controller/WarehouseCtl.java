@@ -8,6 +8,7 @@ import net.datatecsolution.admintools.domain.dto.WarehouseResponse;
 import net.datatecsolution.admintools.domain.service.WarehouseService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -47,12 +48,14 @@ public class WarehouseCtl {
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")   // US-021
     @Operation(summary = "Create a new warehouse (code assigned by the system)")
     public ResponseEntity<WarehouseResponse> create(@Valid @RequestBody WarehouseRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(warehouseService.create(request));
     }
 
     @PutMapping("/{code}")
+    @PreAuthorize("hasRole('ADMIN')")   // US-021
     @Operation(summary = "Update a warehouse description")
     public ResponseEntity<WarehouseResponse> update(@PathVariable int code,
                                                     @Valid @RequestBody WarehouseRequest request) {
@@ -60,6 +63,7 @@ public class WarehouseCtl {
     }
 
     @DeleteMapping("/{code}")
+    @PreAuthorize("hasRole('ADMIN')")   // US-021
     @Operation(summary = "Delete a warehouse (and its departamento mirror)")
     public ResponseEntity<Void> delete(@PathVariable int code) {
         warehouseService.delete(code);
