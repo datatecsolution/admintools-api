@@ -105,19 +105,19 @@ public class Order {
     public void setUser(String user) {
         this.user = user;
     }
-    public Integer getCostomerId() {
-        return costomerId;
+    public Integer getCustomerId() {
+        return customerId;
     }
 
-    public void setCostomerId(Integer costomerId) {
-        this.costomerId = costomerId;
+    public void setCustomerId(Integer customerId) {
+        this.customerId = customerId;
     }
-    public Costomer getCostomer() {
-        return costomer;
+    public Customer getCustomer() {
+        return customer;
     }
 
-    public void setCostomer(Costomer costomer) {
-        this.costomer = costomer;
+    public void setCustomer(Customer customer) {
+        this.customer = customer;
     }
     public List<OrderDetails> getDetails() {
         return details;
@@ -168,8 +168,8 @@ public class Order {
     private BigDecimal totalTaxs18;
     private String user;
     private String obser;
-    private Integer costomerId;
-    private Costomer costomer;
+    private Integer customerId;
+    private Customer customer;
     private Integer sellerId;
     private List<OrderDetails> details;
 }

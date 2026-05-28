@@ -52,7 +52,7 @@ public class SecurityConfig {
         // Exception {
         // http
         // .authorizeHttpRequests((authz) -> authz
-        // .requestMatchers("/admin_tools/**","/products/**","/orders/**","/costomers/**","/auth/**","/price/**","/users/**","/static/**","/favicon.ico").permitAll()
+        // .requestMatchers("/admin_tools/**","/products/**","/orders/**","/customers/**","/auth/**","/price/**","/users/**","/static/**","/favicon.ico").permitAll()
         // .anyRequest().authenticated() // Cualquier otra ruta requerirá autenticación
         // //.requestMatchers("/api/**").authenticated() // Proteger rutas de API con
         // autenticación

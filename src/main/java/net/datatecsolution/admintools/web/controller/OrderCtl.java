@@ -25,7 +25,7 @@ public class OrderCtl {
     // }
 
     @GetMapping("/{orderId}")
-    public ResponseEntity<Order> getProduct(@PathVariable("orderId") int orderId, @RequestParam String user) {
+    public ResponseEntity<Order> getOrder(@PathVariable("orderId") int orderId, @RequestParam String user) {
         return orderService.getOrderUser(orderId, user)
                 .map(order -> new ResponseEntity<>(order, HttpStatus.OK))
                 .orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND));

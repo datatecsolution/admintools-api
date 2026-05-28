@@ -42,23 +42,16 @@ public class ProductCtl {
     }
 
     @GetMapping("/category/{categoryId}")
-    public ResponseEntity<List<Product>> getByCategory(@PathVariable("categoryId") int categoryID) {
-        return productService.getBycategory(categoryID)
+    public ResponseEntity<List<Product>> getByCategory(@PathVariable("categoryId") int categoryId) {
+        return productService.getBycategory(categoryId)
                 .map(products -> new ResponseEntity<>(products, HttpStatus.OK))
                 .orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND));
     }
 
-    @GetMapping("/despriciouser/{description}")
-    public ResponseEntity<List<Product>> getByDesPrecioUser(@PathVariable("description") String description,
-            java.security.Principal principal) {
-        String user = principal.getName();
-        if (description == null || description.isEmpty()) {
-            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-        }
-        return productService.getProductsPrecioUser(description, user)
-                .map(product -> new ResponseEntity<>(product, HttpStatus.OK))
-                .orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND));
-    }
+    // US-022: removed /products/despriciouser/{description} — era un duplicado
+    // con typo de /products/description/{description}; ambos llamaban a
+    // productService.getProductsPrecioUser(...). Si el frontend lo seguia
+    // usando, debe migrar a /products/description/{description}.
 
     @PostMapping("/save")
     public ResponseEntity<Product> save(@RequestBody Product product) {

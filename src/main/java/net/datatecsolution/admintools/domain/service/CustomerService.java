@@ -1,12 +1,12 @@
 package net.datatecsolution.admintools.domain.service;
 
 import jakarta.persistence.EntityNotFoundException;
-import net.datatecsolution.admintools.domain.Costomer;
+import net.datatecsolution.admintools.domain.Customer;
 import net.datatecsolution.admintools.domain.Seller;
 import net.datatecsolution.admintools.domain.dto.CustomerCreateRequest;
 import net.datatecsolution.admintools.domain.dto.CustomerResponse;
-import net.datatecsolution.admintools.domain.repository.CostomerRepository;
-import net.datatecsolution.admintools.persistence.mapper.CostomerMapper;
+import net.datatecsolution.admintools.domain.repository.CustomerRepository;
+import net.datatecsolution.admintools.persistence.mapper.CustomerMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -17,57 +17,65 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Service de clientes. Reemplaza la antigua {@code CostomerService}
+ * (typo historico). Conserva las dos puertas de entrada:
+ *  - metodos getdAll/getdByName que usaba el legacy /costomers (controller borrado en US-022)
+ *  - search/create/update/delete con DTOs (US-019 /customers)
+ */
 @Service
-public class CostomerService {
-    @Autowired
-    private CostomerRepository costomerRepository;
+public class CustomerService {
 
     @Autowired
-    private CostomerMapper costomerMapper;
+    private CustomerRepository customerRepository;
+
+    @Autowired
+    private CustomerMapper customerMapper;
 
     @Autowired
     private SellerService sellerService;
 
-    public List<Costomer> getdAll() {
-        return costomerRepository.getAll();
-    }
-    public Optional<List<Costomer>> getdByName(String name, String user) {
-        return costomerRepository.getByNameAndUser(name, user);
+    public List<Customer> getdAll() {
+        return customerRepository.getAll();
     }
 
-    // US-019: devuelve el DTO de salida; 404 si no existe (via GlobalExceptionHandler).
+    public Optional<List<Customer>> getdByName(String name, String user) {
+        return customerRepository.getByNameAndUser(name, user);
+    }
+
+    // US-019: devuelve DTO de salida; 404 si no existe (via GlobalExceptionHandler).
     public CustomerResponse getById(int id) {
-        Costomer costomer = costomerRepository.getById(id)
+        Customer customer = customerRepository.getById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Cliente " + id + " no encontrado"));
-        return costomerMapper.toResponse(costomer);
+        return customerMapper.toResponse(customer);
     }
 
     // US-019: busqueda paginada de los clientes del vendedor autenticado.
     public Page<CustomerResponse> search(String name, String user, Pageable pageable) {
-        return costomerRepository.search(name, user, pageable).map(costomerMapper::toResponse);
+        return customerRepository.search(name, user, pageable).map(customerMapper::toResponse);
     }
 
     // US-019: crea un cliente asociado al vendedor autenticado.
     public CustomerResponse create(CustomerCreateRequest request, String user) {
         Seller seller = resolveSeller(user);
-        Costomer toCreate = costomerMapper.fromCreateRequest(request);
-        Costomer created = costomerRepository.create(toCreate, seller.getId());
-        return costomerMapper.toResponse(created);
+        Customer toCreate = customerMapper.fromCreateRequest(request);
+        Customer created = customerRepository.create(toCreate, seller.getId());
+        return customerMapper.toResponse(created);
     }
 
     // US-019: actualiza un cliente existente (404 si no existe).
     public CustomerResponse update(int id, CustomerCreateRequest request) {
-        costomerRepository.getById(id)
+        customerRepository.getById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Cliente " + id + " no encontrado"));
-        Costomer toUpdate = costomerMapper.fromCreateRequest(request);
-        return costomerMapper.toResponse(costomerRepository.update(id, toUpdate));
+        Customer toUpdate = customerMapper.fromCreateRequest(request);
+        return customerMapper.toResponse(customerRepository.update(id, toUpdate));
     }
 
     // US-019: elimina un cliente existente (404 si no existe).
     public void delete(int id) {
-        costomerRepository.getById(id)
+        customerRepository.getById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Cliente " + id + " no encontrado"));
-        costomerRepository.delete(id);
+        customerRepository.delete(id);
     }
 
     private Seller resolveSeller(String user) {
