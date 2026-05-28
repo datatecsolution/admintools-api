@@ -104,6 +104,40 @@ No habrá endpoint de "fijar existencia a X". Todo cambio es un documento audita
 - **Sobrante** (físico > sistema) → **entrada**: se modela como **compra** o como un documento de **"ajuste de inventario" / "inventario inicial"** (nombre configurable).
 - **Faltante** (sistema > físico, el caso común) → **salida**: **requisición** desde la bodega de trabajo hacia una bodega **"Pérdidas"**.
 
+> **Implementación refinada (INV-9 / V25, 2026-05-28):** los sobrantes
+> NO necesitan tabla ni endpoint propios. Se modelan como **compras a
+> proveedores ficticios** (`proveedor.es_ajuste = 1`). Eso reusa todo
+> el flujo de INV-5 (validación, trigger `detalle_compra_b_inset`,
+> SP `crear_compa_kardex` con fix V19/V20) sin agregar infraestructura.
+>
+> **Simetría completa del modelo de ajustes:**
+>
+> | Caso         | Endpoint         | Sujeto ficticio del documento     |
+> |--------------|------------------|-----------------------------------|
+> | Faltante     | `POST /requisitions` | bodega **Pérdidas** (destination)  |
+> | Sobrante     | `POST /purchases`    | proveedor con `es_ajuste=1`        |
+> | Inicial      | `POST /purchases`    | proveedor **Inventario inicial**   |
+> | Donación     | `POST /purchases`    | proveedor **Donación recibida**    |
+>
+> **Seeds en V25** (Swing common): proveedor `Inventario inicial` (id=1,
+> preexistente) marcado `es_ajuste=1`; nuevos `Sobrante conteo físico` y
+> `Donación recibida` con `es_ajuste=1`. La columna `proveedor.es_ajuste`
+> permite al frontend filtrar el selector de proveedores reales
+> (`WHERE es_ajuste=0` en el flujo de compras de verdad) sin hardcodear
+> IDs.
+>
+> **Sin efectos colaterales en cuentas por pagar:** ni el trigger de
+> compra ni el SP `crear_compa_kardex` tocan `cuentas_por_pagar`. La CXP
+> se mantiene manual desde el Swing (proceso del negocio). Las compras
+> ficticias entran con `paymentAmount=0` y no aparecen como deuda
+> automática.
+>
+> **Reportes naturales** sin código nuevo: `GET /purchases?supplier={id}&from=&to=`
+> lista todos los ajustes del motivo correspondiente. El SP histórico
+> `crear_ajuste_inventario_kardex` queda formalmente descontinuado para
+> nuevo desarrollo (no se le aplica el fix V19/V20 — ya no es ruta de
+> ajuste).
+
 ### D4 — Multi-bodega
 
 La app de pedidos actual solo ve bodega 1 (Tienda Principal) y **puede quedarse así**. La **app nueva (administración)** necesitará stock **por bodega**. El diseño es multi-bodega desde el modelo de datos (la abstracción de stock recibe `codigoBodega`); los endpoints aceptan/filtran por bodega.
@@ -162,7 +196,7 @@ Dependencias: **INV-0 → INV-1 → {INV-3, INV-4} → {INV-5..INV-9}**. INV-8 s
 | **INV-6** | Requisiciones / Mermas (salida a Pérdidas) | `POST /requisiciones`: encabezado_requisicion + detalle (origen→destino) → trigger mueve stock. Faltante = origen trabajo → Pérdidas | INV-1, INV-3 |
 | **INV-7** | Devoluciones de compra (salida) | `POST /devoluciones-compra`: detalle_devoluciones_compra → trigger baja stock | INV-5 |
 | **INV-8** | Ventas / Facturación (salida automática) | Crear factura inserta detalle_factura → trigger descuenta stock solo. **Se cruza con US-020** | INV-1 |
-| **INV-9** | Ajuste de inventario (documento configurable) | Entrada/salida como documento con razón configurable (reemplaza el SP de ajuste manual descontinuado) | INV-0, INV-1 |
+| **INV-9** | Ajuste de inventario (documento configurable) ✅ **CERRADO 2026-05-28** | Sobrantes = `POST /purchases` con proveedor ficticio (`es_ajuste=1`); faltantes = `POST /requisitions` a bodega Pérdidas. **Sin código nuevo en API**: solo V25 (Swing) que agrega columna `proveedor.es_ajuste` y siembra los proveedores ficticios. Ver D3 refinado. | INV-0, INV-1, INV-5, INV-6 |
 | **INV-CC** | **Fix de concurrencia del kardex** | Serializar movimientos por (artículo, bodega) con lock; corrige un lost-update YA presente en los SPs. Solo BD. Ver §9 | — (independiente) |
 
 ---
