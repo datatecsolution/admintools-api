@@ -29,7 +29,7 @@ INV-CC (sin endpoint)                    Fix de concurrencia en los SPs
 |---|---|
 | Duración del epic | 4 días (2026-05-25 → 2026-05-28) |
 | Historias del epic completadas | 10 (INV-1, 3, 4, 5, 6, 7, 8, 9, Sale Returns, INV-CC) |
-| Migraciones Flyway nuevas (Swing common) | 10 (V17–V26) |
+| Migraciones Flyway nuevas (Swing common) | 11 (V17–V27) |
 | Migraciones Flyway nuevas (Swing caja) | 1 (V8) |
 | Commits API en `main` (incluye US-016/17/18/19/20/21/22) | 28 |
 | Commits Swing en `master` | 12 |
@@ -249,7 +249,44 @@ fix. Hubiera requerido V25 nueva si INV-9 hubiera ido por la ruta original.
 **descontinuado** — no se le aplica el fix porque ya no es ruta de nuevo
 desarrollo.
 
-### 6.9 Frontend orders app cableado a Docker para el proxy
+### 6.9 V19 default invertido + query JOIN cross-schema (descubierto post-deploy)
+
+Después del deploy de V14–V26 a Cliente A (192.168.1.23), el Swing empezó
+a tirar `SIGNAL '45000' Stock insuficiente; usuario bloqueado para
+sobrevender (V19)` para cada venta con stock <= cantidad. El
+comportamiento histórico del Swing era permitir sobreventa.
+
+**Causa raíz doble:**
+
+1. La query del SP V19 hacía
+   `JOIN encabezado_factura ef ON cu.usuario = ef.usuario WHERE ef.numero_factura = p_no_factura`.
+   El SP vive en `admin_tools`; sin prefijo de schema, `encabezado_factura`
+   resuelve a `admin_tools.encabezado_factura`. Pero todo el flujo real
+   (Swing y INV-8) escribe facturas en `admin_tools_caja_N.encabezado_factura`
+   (per-caja). `admin_tools.encabezado_factura` está vacía.
+
+2. El JOIN nunca encuentra el row → `COALESCE(NULL, 0) = 0` → `v_permite=0`.
+   Combinado con `newExistencia < 0` → SIGNAL.
+
+**Lección:** la validación V19 (sobreventa por usuario) se diseñó asumiendo
+que la factura estaba en la misma BD que el SP. Funciona en aislamiento
+pero NUNCA pudo aplicarse en el flujo real cross-schema. Eso convirtió un
+"default conservador" en una **regresión silenciosa** que sólo apareció
+con stock bajo.
+
+**Resolución V27**: cambiar el default a 1 (permitir). Sin cambio de
+firma, sin tocar triggers, cero blast radius. La validación V19 queda
+**pasiva** para el flujo real (cross-schema desde cajas). Si en el futuro
+se necesita validación real, hay que pasar el `usuario` como parámetro al
+SP (V28 + V9 caja: trigger resuelve usuario del encabezado local y lo
+pasa). Diseño documentado pero no implementado.
+
+**Patrón a evitar**: cualquier SP en `admin_tools` que asuma encontrar
+datos en `admin_tools` cuando puede ser llamado desde triggers de cajas.
+Si el dato vive cross-schema, hay que pasarlo como parámetro, no hacer
+JOIN al vacío.
+
+### 6.10 Frontend orders app cableado a Docker para el proxy
 
 `package.json` traía `"proxy": "http://host.docker.internal:8082"` para el
 deploy productivo. Para correrlo en mi laptop contra el API local, tuve que
@@ -367,6 +404,7 @@ Swing
   962c9fc  Merge V8 caja (trigger detalle_factura_b_insert)
   33c42c4  Merge V25 (INV-9 proveedores ficticios)
   43bb955  Merge V26 (drift fix detalle_devoluciones)
+  (next)   V27 (fix default facturar_sin_inventario — bug post-deploy)
 ```
 
 ---
