@@ -9,7 +9,7 @@ import org.mapstruct.Mappings;
 
 import java.util.List;
 
-@Mapper(componentModel = "spring", uses = {CostomerMapper.class,OrderDetailsMapper.class})
+@Mapper(componentModel = "spring", uses = {CustomerMapper.class,OrderDetailsMapper.class})
 public interface OrderMapper {
 
     @Mappings({
@@ -17,11 +17,11 @@ public interface OrderMapper {
             @Mapping(source = "fecha", target = "date"),
             @Mapping(source = "subTotalExcento", target = "subTotalExcento"),
             @Mapping(source = "total", target = "total"),
-            @Mapping(source = "clienteId", target = "costomerId"),
+            @Mapping(source = "clienteId", target = "customerId"),
             @Mapping(source = "estado", target = "active"),
             @Mapping(source = "isvOtros", target = "isvOther"),
             @Mapping(source = "vendedorCod", target = "sellerId"),
-            @Mapping(source = "cliente", target = "costomer"),
+            @Mapping(source = "cliente", target = "customer"),
             @Mapping(source = "usuario", target = "user"),
             @Mapping(source = "observacion", target = "obser"),
             @Mapping(source = "detalles", target = "details")

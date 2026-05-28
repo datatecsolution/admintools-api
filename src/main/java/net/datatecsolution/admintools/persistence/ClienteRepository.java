@@ -1,11 +1,11 @@
 package net.datatecsolution.admintools.persistence;
 
 import jakarta.persistence.EntityNotFoundException;
-import net.datatecsolution.admintools.domain.Costomer;
-import net.datatecsolution.admintools.domain.repository.CostomerRepository;
+import net.datatecsolution.admintools.domain.Customer;
+import net.datatecsolution.admintools.domain.repository.CustomerRepository;
 import net.datatecsolution.admintools.persistence.crud.ClienteCRUD;
 import net.datatecsolution.admintools.persistence.entity.Cliente;
-import net.datatecsolution.admintools.persistence.mapper.CostomerMapper;
+import net.datatecsolution.admintools.persistence.mapper.CustomerMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -15,54 +15,54 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public class ClienteRepository implements CostomerRepository {
+public class ClienteRepository implements CustomerRepository {
+
     @Autowired
     private ClienteCRUD clienteCRUD;
 
     @Autowired
-    private CostomerMapper mapper;
+    private CustomerMapper mapper;
 
     @Override
-    public List<Costomer> getAll() {
+    public List<Customer> getAll() {
         List<Cliente> clientes = (List<Cliente>) clienteCRUD.findAll();
-        return mapper.toCostomers(clientes);
+        return mapper.toCustomers(clientes);
     }
 
     @Override
-    public Optional<List<Costomer>> getByNameAndUser(String name, String user) {
-       // List<Cliente> clientes= clienteCRUD.findByNombreContainingOrderByNombreAsc(name);
-        List<Cliente> clientes= clienteCRUD.findByNombreVendedorOrderByNombreAsc(name, user);
-        return Optional.of(mapper.toCostomers(clientes));
+    public Optional<List<Customer>> getByNameAndUser(String name, String user) {
+        List<Cliente> clientes = clienteCRUD.findByNombreVendedorOrderByNombreAsc(name, user);
+        return Optional.of(mapper.toCustomers(clientes));
     }
 
     @Override
-    public Optional<Costomer> getById(int id) {
-        return clienteCRUD.findById(id).map(mapper::toCostomer);
+    public Optional<Customer> getById(int id) {
+        return clienteCRUD.findById(id).map(mapper::toCustomer);
     }
 
     @Override
-    public Page<Costomer> search(String name, String user, Pageable pageable) {
-        return clienteCRUD.searchByVendedor(name, user, pageable).map(mapper::toCostomer);
+    public Page<Customer> search(String name, String user, Pageable pageable) {
+        return clienteCRUD.searchByVendedor(name, user, pageable).map(mapper::toCustomer);
     }
 
     @Override
-    public Costomer create(Costomer costomer, int sellerId) {
-        Cliente entity = mapper.toCliente(costomer);
+    public Customer create(Customer customer, int sellerId) {
+        Cliente entity = mapper.toCliente(customer);
         entity.setIdVendedor(sellerId);
-        return mapper.toCostomer(clienteCRUD.save(entity));
+        return mapper.toCustomer(clienteCRUD.save(entity));
     }
 
     @Override
-    public Costomer update(int id, Costomer costomer) {
+    public Customer update(int id, Customer customer) {
         // Cargamos la entidad existente y solo pisamos los campos editables del
         // DTO; asi preservamos vendedor, limite de credito, tipo, etc.
         Cliente existing = clienteCRUD.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Cliente " + id + " no encontrado"));
-        existing.setNombre(costomer.getCostomerName());
-        existing.setRtn(costomer.getCostomerRTN());
-        existing.setDireccion(costomer.getCostomerAdress());
-        existing.setTelefono(costomer.getCostomerTelephoneNumber());
-        return mapper.toCostomer(clienteCRUD.save(existing));
+        existing.setNombre(customer.getCustomerName());
+        existing.setRtn(customer.getCustomerRTN());
+        existing.setDireccion(customer.getCustomerAdress());
+        existing.setTelefono(customer.getCustomerTelephoneNumber());
+        return mapper.toCustomer(clienteCRUD.save(existing));
     }
 
     @Override

@@ -5,7 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import net.datatecsolution.admintools.domain.dto.CustomerCreateRequest;
 import net.datatecsolution.admintools.domain.dto.CustomerResponse;
-import net.datatecsolution.admintools.domain.service.CostomerService;
+import net.datatecsolution.admintools.domain.service.CustomerService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -28,17 +28,17 @@ import java.security.Principal;
  * DTOs (entrada/salida), inyeccion por constructor, errores via
  * GlobalExceptionHandler, validacion con @Valid y documentacion OpenAPI.
  *
- * Convive temporalmente con el antiguo {@code CostomerCtl} (/costomers) mientras
- * el frontend migra. El viejo se elimina en el commit de cutover (US-019).
+ * US-022 cleanup: el legacy CostomerCtl (/costomers) fue eliminado;
+ * este es ahora el unico controller de clientes.
  */
 @RestController
 @RequestMapping("/customers")
 @Tag(name = "Clientes", description = "Gestion de clientes")
 public class CustomerCtl {
 
-    private final CostomerService customerService;
+    private final CustomerService customerService;
 
-    public CustomerCtl(CostomerService customerService) {
+    public CustomerCtl(CustomerService customerService) {
         this.customerService = customerService;
     }
 
