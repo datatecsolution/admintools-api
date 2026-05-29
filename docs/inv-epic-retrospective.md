@@ -286,6 +286,18 @@ datos en `admin_tools` cuando puede ser llamado desde triggers de cajas.
 Si el dato vive cross-schema, hay que pasarlo como parámetro, no hacer
 JOIN al vacío.
 
+**Hallazgo secundario al investigar el reporte**: `FacturaDao.registrar`
+del Swing **no es transaccional** — cada INSERT (encabezado + N detalles
++ cuenta_factura) usa una conexión distinta del pool con `autoCommit=true`.
+Cualquier falla intermedia produce factura cobrada sin líneas (huérfana).
+V27 desactivó el único punto de falla conocido (SIGNAL de V19) y el bug
+estructural NO se manifiesta hoy, pero queda latente para cualquier otra
+causa de error. Refactor diferido voluntariamente para no atrasar el
+proyecto principal de US. Plan completo documentado en repo Swing:
+`docs/deferred-facturadao-transaccional.md` con pasos, estimación
+(~2h+buffer), gatillos para activarlo (otro huérfano en prod, reactivación
+de V19/V28, cliente con auditoría estricta) y mitigaciones.
+
 ### 6.10 Frontend orders app cableado a Docker para el proxy
 
 `package.json` traía `"proxy": "http://host.docker.internal:8082"` para el
