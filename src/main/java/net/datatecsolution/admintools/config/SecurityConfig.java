@@ -149,6 +149,11 @@ public class SecurityConfig {
                                                                 "/v3/api-docs.yaml")
                                                 .permitAll()
 
+                                                // 5. Imagenes uploadeadas via US-030 — publicas
+                                                //    (el upload requiere ADMIN pero el serving es publico
+                                                //    para que el frontend las muestre sin JWT en el <img>).
+                                                .requestMatchers("/uploads/**").permitAll()
+
                                                 // 4. Cualquier otra cosa requiere autenticación
                                                 .anyRequest().authenticated())
                                 .exceptionHandling(exception -> exception

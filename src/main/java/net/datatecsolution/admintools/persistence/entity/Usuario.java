@@ -43,6 +43,28 @@ public class Usuario implements UserDetails {
     @Column(name = "tipo_permiso")
     private Integer tipoPermiso;
 
+    @Column(name = "nombre_completo")
+    private String nombreCompleto;
+
+    @Column(name = "codigo_caja")
+    private Integer codigoCaja;
+
+    @Column(name = "codigo_empleado")
+    private Integer codigoEmpleado;
+
+    /**
+     * Soft-delete flag (Sprint 4 #51). NULL o true = activo; false = baja
+     * logica. Override del isEnabled() de UserDetails lee este campo.
+     */
+    @Column(name = "enabled")
+    private Boolean enabled;
+
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private java.time.LocalDateTime createdAt;
+
+    @Column(name = "updated_at", insertable = false, updatable = false)
+    private java.time.LocalDateTime updatedAt;
+
     @OneToMany(mappedBy = "usuario", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private Set<Authority> authorities = new HashSet<>();
 
@@ -81,7 +103,10 @@ public class Usuario implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return true;
+        // Sprint 4 #51: lee el campo enabled de la BD (soft-delete).
+        // NULL se considera activo (compatibilidad historica donde la
+        // columna no estaba poblada).
+        return enabled == null || enabled;
     }
 
     public Long getIdUsuario() {
@@ -124,4 +149,18 @@ public class Usuario implements UserDetails {
         this.precios = precios;
     }
 
+    public String getNombreCompleto() { return nombreCompleto; }
+    public void setNombreCompleto(String nombreCompleto) { this.nombreCompleto = nombreCompleto; }
+
+    public Integer getCodigoCaja() { return codigoCaja; }
+    public void setCodigoCaja(Integer codigoCaja) { this.codigoCaja = codigoCaja; }
+
+    public Integer getCodigoEmpleado() { return codigoEmpleado; }
+    public void setCodigoEmpleado(Integer codigoEmpleado) { this.codigoEmpleado = codigoEmpleado; }
+
+    public Boolean getEnabled() { return enabled; }
+    public void setEnabled(Boolean enabled) { this.enabled = enabled; }
+
+    public java.time.LocalDateTime getCreatedAt() { return createdAt; }
+    public java.time.LocalDateTime getUpdatedAt() { return updatedAt; }
 }
