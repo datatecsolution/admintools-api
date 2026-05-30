@@ -18,4 +18,9 @@ public interface PreciosArticuloCRUD extends JpaRepository<PrecioArticulo, Integ
             " WHERE precios_articulos.codigo_articulo=? AND usuarios_precios.usuario=?",nativeQuery = true)
     List<PrecioArticulo> findPrecioUser(Integer articuloId, String usuario);
 
+    /** Sprint 4.5 fix — todos los precios asignados a un articulo. */
+    List<PrecioArticulo> findByArticuloId(Integer articuloId);
+
+    /** Sprint 4.5 fix — cuantos articulos usan un tipo de precio (para validar delete). */
+    long countByPrecioId(Integer precioId);
 }
