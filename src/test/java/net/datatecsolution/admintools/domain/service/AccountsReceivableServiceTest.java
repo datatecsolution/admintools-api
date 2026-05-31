@@ -7,9 +7,12 @@ import net.datatecsolution.admintools.domain.dto.ReceiptResponse;
 import net.datatecsolution.admintools.persistence.crud.ClienteCRUD;
 import net.datatecsolution.admintools.persistence.crud.CuentaFacturaCRUD;
 import net.datatecsolution.admintools.persistence.crud.CuentaPorCobrarCRUD;
+import net.datatecsolution.admintools.persistence.crud.CuentaPorCobrarFacturaCRUD;
 import net.datatecsolution.admintools.persistence.crud.ReciboPagoCRUD;
 import net.datatecsolution.admintools.persistence.entity.Cliente;
+import net.datatecsolution.admintools.persistence.entity.CuentaFactura;
 import net.datatecsolution.admintools.persistence.entity.CuentaPorCobrar;
+import net.datatecsolution.admintools.persistence.entity.CuentaPorCobrarFactura;
 import net.datatecsolution.admintools.persistence.entity.ReciboPago;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,12 +22,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -40,11 +45,13 @@ class AccountsReceivableServiceTest {
     @Mock private CuentaPorCobrarCRUD cuentaPorCobrarCRUD;
     @Mock private ReciboPagoCRUD reciboPagoCRUD;
     @Mock private CuentaFacturaCRUD cuentaFacturaCRUD;
+    @Mock private CuentaPorCobrarFacturaCRUD cuentaPorCobrarFacturaCRUD;
     @Mock private PlatformTransactionManager txManager;
 
     private AccountsReceivableService service() {
         return new AccountsReceivableService(
-                clienteCRUD, cuentaPorCobrarCRUD, reciboPagoCRUD, cuentaFacturaCRUD, txManager);
+                clienteCRUD, cuentaPorCobrarCRUD, reciboPagoCRUD, cuentaFacturaCRUD,
+                cuentaPorCobrarFacturaCRUD, txManager);
     }
 
     private Cliente cliente(int id, BigDecimal limite) {
@@ -152,6 +159,128 @@ class AccountsReceivableServiceTest {
         when(clienteCRUD.findById(99)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service().applyPayment(
+                99, new AbonoRequest(new BigDecimal("10"), null, null), "ronal"))
+                .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    // ============================================================
+    //                          US-034
+    // ============================================================
+
+    private CuentaFactura cuentaFactura(int codigoCuenta, int customerId) {
+        CuentaFactura cf = new CuentaFactura();
+        cf.setCodigoCuenta(codigoCuenta);
+        cf.setCodigoCliente(customerId);
+        return cf;
+    }
+
+    private CuentaPorCobrarFactura movFactura(BigDecimal saldo) {
+        CuentaPorCobrarFactura m = new CuentaPorCobrarFactura();
+        m.setSaldo(saldo);
+        return m;
+    }
+
+    @Test
+    void postCreditSale_generaCreditoClienteYFactura() {
+        when(cuentaPorCobrarCRUD.findTopByCodigoClienteOrderByIdDesc(7)).thenReturn(Optional.empty());
+        when(cuentaFacturaCRUD.save(any(CuentaFactura.class))).thenAnswer(inv -> {
+            CuentaFactura cf = inv.getArgument(0);
+            cf.setCodigoCuenta(9);
+            return cf;
+        });
+
+        service().postCreditSale(7, 4, 77, new BigDecimal("100"), LocalDate.of(2026, 7, 1), "ronal");
+
+        // credito a nivel cliente: credito 100, saldo 100
+        ArgumentCaptor<CuentaPorCobrar> cli = ArgumentCaptor.forClass(CuentaPorCobrar.class);
+        verify(cuentaPorCobrarCRUD).save(cli.capture());
+        assertThat(cli.getValue().getCredito()).isEqualByComparingTo("100.00");
+        assertThat(cli.getValue().getSaldo()).isEqualByComparingTo("100.00");
+        assertThat(cli.getValue().getCodigoCliente()).isEqualTo(7);
+
+        // cuenta por factura con vencimiento y caja
+        ArgumentCaptor<CuentaFactura> cf = ArgumentCaptor.forClass(CuentaFactura.class);
+        verify(cuentaFacturaCRUD).save(cf.capture());
+        assertThat(cf.getValue().getNoFactura()).isEqualTo(77);
+        assertThat(cf.getValue().getCodigoCaja()).isEqualTo(4);
+        assertThat(cf.getValue().getFechaVencimiento()).isEqualTo(LocalDate.of(2026, 7, 1));
+
+        // credito a nivel factura: saldo 100, tipo 1, una sola save (sin saldo a favor)
+        ArgumentCaptor<CuentaPorCobrarFactura> pf = ArgumentCaptor.forClass(CuentaPorCobrarFactura.class);
+        verify(cuentaPorCobrarFacturaCRUD).save(pf.capture());
+        assertThat(pf.getValue().getCredito()).isEqualByComparingTo("100.00");
+        assertThat(pf.getValue().getSaldo()).isEqualByComparingTo("100.00");
+        assertThat(pf.getValue().getTipoMovimiento()).isEqualTo(1);
+        assertThat(pf.getValue().getCodigoCuenta()).isEqualTo(9);
+    }
+
+    @Test
+    void postCreditSale_conSaldoAFavor_aplicaDebitoEnFactura() {
+        when(cuentaPorCobrarCRUD.findTopByCodigoClienteOrderByIdDesc(7))
+                .thenReturn(Optional.of(movimiento(new BigDecimal("-30.00"))));
+        when(cuentaFacturaCRUD.save(any(CuentaFactura.class))).thenAnswer(inv -> {
+            CuentaFactura cf = inv.getArgument(0);
+            cf.setCodigoCuenta(9);
+            return cf;
+        });
+
+        service().postCreditSale(7, 4, 77, new BigDecimal("100"), LocalDate.of(2026, 7, 1), "ronal");
+
+        // cliente: credito 100 sobre saldo -30 => saldo 70
+        ArgumentCaptor<CuentaPorCobrar> cli = ArgumentCaptor.forClass(CuentaPorCobrar.class);
+        verify(cuentaPorCobrarCRUD).save(cli.capture());
+        assertThat(cli.getValue().getSaldo()).isEqualByComparingTo("70.00");
+
+        // factura: 2 movimientos (credito inicial 100 + debito por saldo a favor 30 => saldo 70)
+        ArgumentCaptor<CuentaPorCobrarFactura> pf = ArgumentCaptor.forClass(CuentaPorCobrarFactura.class);
+        verify(cuentaPorCobrarFacturaCRUD, times(2)).save(pf.capture());
+        CuentaPorCobrarFactura debFavor = pf.getAllValues().get(1);
+        assertThat(pf.getAllValues().get(0).getCredito()).isEqualByComparingTo("100.00");
+        assertThat(debFavor.getDebito()).isEqualByComparingTo("30.00");
+        assertThat(debFavor.getSaldo()).isEqualByComparingTo("70.00");
+        assertThat(debFavor.getTipoMovimiento()).isEqualTo(2);
+    }
+
+    @Test
+    void applyInvoicePayment_bajaSaldoFacturaYCliente() {
+        when(cuentaFacturaCRUD.findById(9)).thenReturn(Optional.of(cuentaFactura(9, 7)));
+        when(cuentaPorCobrarFacturaCRUD.findTopByCodigoCuentaOrderByIdDesc(9))
+                .thenReturn(Optional.of(movFactura(new BigDecimal("100.00"))));
+        when(cuentaPorCobrarCRUD.findTopByCodigoClienteOrderByIdDesc(7))
+                .thenReturn(Optional.of(movimiento(new BigDecimal("100.00"))));
+        when(reciboPagoCRUD.save(any(ReciboPago.class))).thenAnswer(inv -> {
+            ReciboPago r = inv.getArgument(0);
+            r.setNoRecibo(3);
+            return r;
+        });
+
+        ReceiptResponse resp = service().applyInvoicePayment(
+                9, new AbonoRequest(new BigDecimal("40"), "Cobro", "REF-9"), "ronal");
+
+        // el recibo registra el saldo de la FACTURA (100 -> 60), como el Swing
+        assertThat(resp.noRecibo()).isEqualTo(3);
+        assertThat(resp.saldoAnterior()).isEqualByComparingTo("100.00");
+        assertThat(resp.saldo()).isEqualByComparingTo("60.00");
+
+        // debito a nivel factura: tipo 2, saldo 60
+        ArgumentCaptor<CuentaPorCobrarFactura> pf = ArgumentCaptor.forClass(CuentaPorCobrarFactura.class);
+        verify(cuentaPorCobrarFacturaCRUD).save(pf.capture());
+        assertThat(pf.getValue().getDebito()).isEqualByComparingTo("40.00");
+        assertThat(pf.getValue().getSaldo()).isEqualByComparingTo("60.00");
+        assertThat(pf.getValue().getTipoMovimiento()).isEqualTo(2);
+
+        // debito a nivel cliente: saldo 100 -> 60
+        ArgumentCaptor<CuentaPorCobrar> cliCap = ArgumentCaptor.forClass(CuentaPorCobrar.class);
+        verify(cuentaPorCobrarCRUD).save(cliCap.capture());
+        assertThat(cliCap.getValue().getDebito()).isEqualByComparingTo("40.00");
+        assertThat(cliCap.getValue().getSaldo()).isEqualByComparingTo("60.00");
+    }
+
+    @Test
+    void applyInvoicePayment_cuentaInexistente_lanza404() {
+        when(cuentaFacturaCRUD.findById(99)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().applyInvoicePayment(
                 99, new AbonoRequest(new BigDecimal("10"), null, null), "ronal"))
                 .isInstanceOf(EntityNotFoundException.class);
     }

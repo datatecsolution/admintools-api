@@ -3,7 +3,9 @@ package net.datatecsolution.admintools.domain.service;
 import net.datatecsolution.admintools.config.TenantContext;
 import net.datatecsolution.admintools.domain.dto.InvoiceLineResponse;
 import net.datatecsolution.admintools.domain.dto.InvoiceResponse;
+import net.datatecsolution.admintools.persistence.crud.CajaCRUD;
 import net.datatecsolution.admintools.persistence.crud.ClienteCRUD;
+import net.datatecsolution.admintools.persistence.crud.ConfigAppCRUD;
 import net.datatecsolution.admintools.persistence.crud.OrdenCRUD;
 import net.datatecsolution.admintools.persistence.entity.Cliente;
 import net.datatecsolution.admintools.persistence.entity.DetalleOrden;
@@ -80,6 +82,9 @@ public class InvoiceService {
     private final ClienteCRUD clienteCRUD;
     private final EncabezadoFacturaCRUD encabezadoFacturaCRUD;
     private final DetalleFacturaCRUD detalleFacturaCRUD;
+    private final CajaCRUD cajaCRUD;
+    private final ConfigAppCRUD configAppCRUD;
+    private final AccountsReceivableService accountsReceivableService;
     private final TransactionTemplate commonTx;
     private final TransactionTemplate tenantTx;
 
@@ -87,12 +92,18 @@ public class InvoiceService {
                           ClienteCRUD clienteCRUD,
                           EncabezadoFacturaCRUD encabezadoFacturaCRUD,
                           DetalleFacturaCRUD detalleFacturaCRUD,
+                          CajaCRUD cajaCRUD,
+                          ConfigAppCRUD configAppCRUD,
+                          AccountsReceivableService accountsReceivableService,
                           @Qualifier("transactionManager") PlatformTransactionManager commonTm,
                           @Qualifier("tenantTransactionManager") PlatformTransactionManager tenantTm) {
         this.ordenCRUD = ordenCRUD;
         this.clienteCRUD = clienteCRUD;
         this.encabezadoFacturaCRUD = encabezadoFacturaCRUD;
         this.detalleFacturaCRUD = detalleFacturaCRUD;
+        this.cajaCRUD = cajaCRUD;
+        this.configAppCRUD = configAppCRUD;
+        this.accountsReceivableService = accountsReceivableService;
         this.commonTx = new TransactionTemplate(commonTm);
         this.tenantTx = new TransactionTemplate(tenantTm);
     }
@@ -151,7 +162,45 @@ public class InvoiceService {
             throw e;
         }
 
+        // ---- (3) US-034: venta a credito -> generar saldo en CxC (BD comun) ----
+        if (orden.getTipoFactura() != null && orden.getTipoFactura() == 2) {
+            postCreditCxc(orden, savedHeader.getNumeroFactura(), tenant, user);
+        }
+
         return loadResponse(savedHeader.getNumeroFactura(), tenant);
+    }
+
+    /**
+     * US-034: tras commitear la factura a credito en la caja, registra el saldo
+     * en las tablas CxC de la BD comun. Si falla, la factura ya esta commiteada
+     * (no hay XA): logueamos para reconciliacion manual y propagamos el error.
+     */
+    private void postCreditCxc(Orden orden, Integer numeroFactura, String tenant, String user) {
+        Integer customerId = orden.getClienteId();
+        if (customerId == null || customerId <= 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Una venta a credito requiere un cliente valido");
+        }
+        int codigoCaja = cajaCRUD.findByNombreDb(tenant).map(c -> c.getCodigo()).orElse(0);
+        LocalDate fechaVenc = LocalDate.now().plusDays(creditDueDays());
+        try {
+            accountsReceivableService.postCreditSale(
+                    customerId, codigoCaja, numeroFactura, nz(orden.getTotal()), fechaVenc, user);
+        } catch (RuntimeException e) {
+            log.error("US-034: factura {} (caja={}, cliente={}) quedo SIN saldo CxC — reconciliar manualmente",
+                    numeroFactura, codigoCaja, customerId, e);
+            throw e;
+        }
+    }
+
+    /** Dias de credito desde config_app; 0 si no hay config o falla la lectura. */
+    private int creditDueDays() {
+        try {
+            return configAppCRUD.findDiaVencimientoFactura().orElse(0);
+        } catch (RuntimeException e) {
+            log.warn("US-034: no se pudo leer config_app.dia_vencimiento_factura, usando 0: {}", e.getMessage());
+            return 0;
+        }
     }
 
     public InvoiceResponse getById(int invoiceId) {
@@ -199,21 +248,32 @@ public class InvoiceService {
         h.setIsvOtros(nz(orden.getIsvOtros()));
         h.setIsv18(nz(orden.getTotalImpuesto18()));
         h.setUsuario(user);
-        // Asumimos pago al contado: pago = total. tipo_factura/tipo_pago=1.
-        h.setPago(nz(orden.getTotal()));
         h.setDescuento(nz(orden.getTotalDescuento()));
-        h.setTipoFactura(1);
+        // US-034: tipo_factura 2 = credito (lo trae la orden); 1 = contado.
+        boolean credito = orden.getTipoFactura() != null && orden.getTipoFactura() == 2;
+        h.setTipoFactura(credito ? 2 : 1);
         h.setAgregaKardex(0);
         h.setTipoPago(1);
         h.setObservacion(orden.getObservacion() == null || orden.getObservacion().isBlank()
                 ? "NA" : orden.getObservacion());
         h.setTotalLetras("NA");             // NumberToLetter: mejora futura
         h.setCodigoVendedor(orden.getVendedorCod());
-        h.setEstadoPago(0);                 // pagada
         h.setCodRango(1);
         h.setCobroTarjeta(BigDecimal.ZERO);
-        h.setCobroEfectivo(nz(orden.getTotal()));
-        h.setFechaVencimiento(LocalDate.now());
+        if (credito) {
+            // venta a credito: nada cobrado al facturar; queda pendiente y con
+            // vencimiento = hoy + config_app.dia_vencimiento_factura.
+            h.setPago(BigDecimal.ZERO);
+            h.setEstadoPago(1);             // pendiente de pago
+            h.setCobroEfectivo(BigDecimal.ZERO);
+            h.setFechaVencimiento(LocalDate.now().plusDays(creditDueDays()));
+        } else {
+            // contado: pago = total
+            h.setPago(nz(orden.getTotal()));
+            h.setEstadoPago(0);             // pagada
+            h.setCobroEfectivo(nz(orden.getTotal()));
+            h.setFechaVencimiento(LocalDate.now());
+        }
         return h;
     }
 

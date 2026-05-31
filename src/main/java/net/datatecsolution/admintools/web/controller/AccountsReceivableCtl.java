@@ -99,4 +99,27 @@ public class AccountsReceivableCtl {
             @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(service.getReceipts(customerId, PageRequest.of(page, size)));
     }
+
+    // ---- US-034: cobro y trazabilidad a nivel factura ----
+
+    @PostMapping("/invoices/{codigoCuenta}/payments")
+    @PreAuthorize("hasAnyRole('ADMIN','CASHIER')")
+    @Operation(summary = "Aplicar un abono a una factura a credito (cobro)")
+    public ResponseEntity<ReceiptResponse> applyInvoicePayment(@PathVariable int codigoCuenta,
+                                                              @Valid @RequestBody AbonoRequest request,
+                                                              Principal principal) {
+        String user = principal != null ? principal.getName() : null;
+        ReceiptResponse receipt = service.applyInvoicePayment(codigoCuenta, request, user);
+        return ResponseEntity.status(HttpStatus.CREATED).body(receipt);
+    }
+
+    @GetMapping("/invoices/{codigoCuenta}/statement")
+    @PreAuthorize("hasAnyRole('ADMIN','CASHIER','SELLER')")
+    @Operation(summary = "Historial de movimientos de una factura a credito")
+    public ResponseEntity<Page<LedgerEntryResponse>> getInvoiceStatement(
+            @PathVariable int codigoCuenta,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size) {
+        return ResponseEntity.ok(service.getInvoiceStatement(codigoCuenta, PageRequest.of(page, size)));
+    }
 }

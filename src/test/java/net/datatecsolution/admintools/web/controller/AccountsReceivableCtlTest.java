@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import net.datatecsolution.admintools.config.JwtUtil;
 import net.datatecsolution.admintools.domain.dto.AbonoRequest;
 import net.datatecsolution.admintools.domain.dto.BalanceResponse;
+import net.datatecsolution.admintools.domain.dto.LedgerEntryResponse;
 import net.datatecsolution.admintools.domain.dto.ReceiptResponse;
 import net.datatecsolution.admintools.domain.service.AccountsReceivableService;
 import net.datatecsolution.admintools.domain.service.CustomUserDetailsService;
@@ -107,6 +108,34 @@ class AccountsReceivableCtlTest {
         when(service.listDelinquent(eq(30), any())).thenReturn((Page) empty);
 
         mockMvc.perform(get("/accounts-receivable/delinquent"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray());
+    }
+
+    @Test
+    @WithMockUser(roles = "CASHIER")
+    void applyInvoicePayment_valido_retorna201() throws Exception {
+        when(service.applyInvoicePayment(eq(9), any(AbonoRequest.class), any()))
+                .thenReturn(new ReceiptResponse(
+                        3, LocalDateTime.now(), 7, new BigDecimal("40.00"), "Cobro",
+                        "REF-9", "ronal", new BigDecimal("100.00"), new BigDecimal("60.00")));
+
+        mockMvc.perform(post("/accounts-receivable/invoices/9/payments")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new AbonoRequest(new BigDecimal("40"), "Cobro", "REF-9"))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.noRecibo").value(3))
+                .andExpect(jsonPath("$.saldo").value(60.00));
+    }
+
+    @Test
+    @WithMockUser(roles = "SELLER")
+    void invoiceStatement_retorna200() throws Exception {
+        Page<LedgerEntryResponse> empty = new PageImpl<>(List.of());
+        when(service.getInvoiceStatement(eq(9), any())).thenReturn(empty);
+
+        mockMvc.perform(get("/accounts-receivable/invoices/9/statement"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray());
     }
