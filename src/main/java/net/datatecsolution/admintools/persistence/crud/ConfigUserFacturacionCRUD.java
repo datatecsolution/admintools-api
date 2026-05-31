@@ -16,4 +16,9 @@ public interface ConfigUserFacturacionCRUD extends JpaRepository<ConfigUserFactu
     @Query(value = "SELECT ventana_vendedor FROM config_user_facturacion WHERE usuario = :usuario LIMIT 1",
             nativeQuery = true)
     Optional<Integer> findVentanaVendedor(@Param("usuario") String usuario);
+
+    /** ¿Pedir observaciones de la factura al cobrar? (1=sí). */
+    @Query(value = "SELECT ventana_observaciones FROM config_user_facturacion WHERE usuario = :usuario LIMIT 1",
+            nativeQuery = true)
+    Optional<Integer> findVentanaObservaciones(@Param("usuario") String usuario);
 }
