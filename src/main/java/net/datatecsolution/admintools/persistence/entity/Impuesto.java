@@ -11,7 +11,15 @@ public class Impuesto {
     @Column(name = "codigo_impuesto")
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
+
+    // Sprint 4.5+ fix: la columna real es `descripcion_impuesto`. Antes no
+    // estaba mapeada; el frontend la necesita para el dropdown de impuestos
+    // del modal de producto.
+    @Column(name = "descripcion_impuesto")
+    private String descripcion;
+
     private String porcentaje;
+
     @OneToMany(mappedBy = "imp")
     private List<Articulo> articulos;
 
@@ -21,6 +29,14 @@ public class Impuesto {
 
     public void setId(Integer id) {
         this.id = id;
+    }
+
+    public String getDescripcion() {
+        return descripcion;
+    }
+
+    public void setDescripcion(String descripcion) {
+        this.descripcion = descripcion;
     }
 
     public String getPorcentaje() {
