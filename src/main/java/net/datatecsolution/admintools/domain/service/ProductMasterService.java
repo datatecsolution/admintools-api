@@ -9,6 +9,7 @@ import net.datatecsolution.admintools.persistence.mapper.ProductMasterMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,9 +28,15 @@ public class ProductMasterService {
     @Autowired private ProductMasterMapper mapper;
 
     public Page<ProductResponse> search(String name, int page, int size) {
+        // Sprint 4.5+ fix: orden por id DESC para que los productos recien
+        // creados aparezcan en la primera pagina. Antes MySQL devolvia el
+        // orden fisico (por PK clustered ascendente) y un articulo nuevo
+        // con id 319697 quedaba sepultado en la pagina ~31900.
+        PageRequest pageReq = PageRequest.of(page, size,
+                Sort.by(Sort.Direction.DESC, "codigoArticulo"));
         Page<ArticuloMaster> result = (name == null || name.isBlank())
-                ? crud.findAll(PageRequest.of(page, size))
-                : crud.findByArticuloContaining(name, PageRequest.of(page, size));
+                ? crud.findAll(pageReq)
+                : crud.findByArticuloContaining(name, pageReq);
         return result.map(mapper::toResponse);
     }
 
