@@ -93,6 +93,7 @@ public class InvoiceService {
     private final ImpuestoCRUD impuestoCRUD;
     private final DatosFacturaCRUD datosFacturaCRUD;
     private final AccountsReceivableService accountsReceivableService;
+    private final SellerCatalogService sellerCatalogService;
     private final TransactionTemplate commonTx;
     private final TransactionTemplate tenantTx;
 
@@ -105,6 +106,7 @@ public class InvoiceService {
                           ImpuestoCRUD impuestoCRUD,
                           DatosFacturaCRUD datosFacturaCRUD,
                           AccountsReceivableService accountsReceivableService,
+                          SellerCatalogService sellerCatalogService,
                           @Qualifier("transactionManager") PlatformTransactionManager commonTm,
                           @Qualifier("tenantTransactionManager") PlatformTransactionManager tenantTm) {
         this.ordenCRUD = ordenCRUD;
@@ -116,6 +118,7 @@ public class InvoiceService {
         this.impuestoCRUD = impuestoCRUD;
         this.datosFacturaCRUD = datosFacturaCRUD;
         this.accountsReceivableService = accountsReceivableService;
+        this.sellerCatalogService = sellerCatalogService;
         this.commonTx = new TransactionTemplate(commonTm);
         this.tenantTx = new TransactionTemplate(tenantTm);
     }
@@ -214,11 +217,13 @@ public class InvoiceService {
 
         int codigoCaja = cajaCRUD.findByNombreDb(tenant).map(c -> c.getCodigo()).orElse(0);
         int dueDays = creditDueDays();
+        // Vendedor: segun config_user_facturacion.ventana_vendedor (Swing). Default 1.
+        int codigoVendedor = sellerCatalogService.resolveVendedor(user, req.vendedorId());
 
         EncabezadoFactura savedHeader = tenantTx.execute(status -> {
             int codRango = datosFacturaCRUD.findTopByOrderByCodigoRangoDesc()
                     .map(d -> d.getCodigoRango()).orElse(1);
-            EncabezadoFactura header = buildHeaderDirect(req, tot, user, credito, codRango, dueDays);
+            EncabezadoFactura header = buildHeaderDirect(req, tot, user, credito, codRango, dueDays, codigoVendedor);
             EncabezadoFactura sh = encabezadoFacturaCRUD.save(header);
             for (InvoiceLineRequest l : req.lines()) {
                 detalleFacturaCRUD.save(buildLineDirect(l, sh.getNumeroFactura(),
@@ -261,7 +266,7 @@ public class InvoiceService {
     private EncabezadoFactura buildHeaderDirect(InvoiceCreateRequest req,
                                                 FacturacionCalculadora.Totales tot,
                                                 String user, boolean credito,
-                                                int codRango, int dueDays) {
+                                                int codRango, int dueDays, int codigoVendedor) {
         EncabezadoFactura h = new EncabezadoFactura();
         h.setFecha(LocalDateTime.now());
         h.setSubtotalExcento(tot.getSubtotalExcento());
@@ -278,7 +283,7 @@ public class InvoiceService {
         h.setEstadoFactura("ACT");
         h.setUsuario(user);
         h.setAgregaKardex(0);
-        h.setCodigoVendedor(0);
+        h.setCodigoVendedor(codigoVendedor); // empleado/vendedor (config ventana_vendedor; default 1)
         h.setCodRango(codRango);            // CAI activo de la caja
         h.setTotalLetras("NA");
         h.setObservacion(req.observacion() == null || req.observacion().isBlank()

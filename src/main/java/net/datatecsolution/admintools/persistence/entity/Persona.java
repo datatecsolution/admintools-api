@@ -1,6 +1,7 @@
 package net.datatecsolution.admintools.persistence.entity;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.MappedSuperclass;
 
 /**
 
@@ -17,6 +18,7 @@ import jakarta.persistence.Column;
 
 
 
+@MappedSuperclass
 public abstract  class Persona {
 	@Column(name = "nombre")
 	protected String nombre="";

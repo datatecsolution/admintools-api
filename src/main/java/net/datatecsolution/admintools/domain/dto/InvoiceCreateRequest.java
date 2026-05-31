@@ -16,6 +16,7 @@ public record InvoiceCreateRequest(
         @NotNull Integer customerId,
         @NotNull Integer tipoFactura,
         Integer tipoPago,
+        Integer vendedorId,
         BigDecimal cobroEfectivo,
         BigDecimal cobroTarjeta,
         String observacion,
