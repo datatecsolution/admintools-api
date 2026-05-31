@@ -16,6 +16,7 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.test.web.servlet.MockMvc;
 
+import javax.sql.DataSource;
 import java.util.Collections;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -42,6 +43,11 @@ class AuthCtlTest {
 
     @MockBean
     private CustomUserDetailsService userDetailsService;
+
+    // Requerido por TenantInterceptor (HandlerInterceptor que el slice levanta);
+    // su preHandle tolera getConnection() nulo, asi que el mock basta.
+    @MockBean(name = "commonDataSource")
+    private DataSource commonDataSource;
 
     @Test
     void login_conCredencialesValidas_retornaTokenYUsername() throws Exception {

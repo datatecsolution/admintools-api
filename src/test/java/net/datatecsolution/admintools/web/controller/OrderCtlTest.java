@@ -15,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.server.ResponseStatusException;
 
+import javax.sql.DataSource;
 import java.security.Principal;
 import java.util.Collections;
 import java.util.Optional;
@@ -50,6 +51,11 @@ class OrderCtlTest {
 
     @MockBean
     private CustomUserDetailsService customUserDetailsService;
+
+    // Requerido por TenantInterceptor (HandlerInterceptor que el slice levanta);
+    // su preHandle tolera getConnection() nulo, asi que el mock basta.
+    @MockBean(name = "commonDataSource")
+    private DataSource commonDataSource;
 
     private static final Principal RONAL = () -> "ronal";
 
