@@ -6,6 +6,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -38,6 +40,7 @@ public class ReciboPago {
     private String totalLetras = "NA";
 
     @Column(name = "total")
+    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal total = BigDecimal.ZERO;
 
     @Column(name = "concepto")
@@ -47,9 +50,11 @@ public class ReciboPago {
     private String usuario = "SYSTEM";
 
     @Column(name = "saldo_anterio")
+    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal saldoAnterior = BigDecimal.ZERO;
 
     @Column(name = "saldo")
+    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal saldo = BigDecimal.ZERO;
 
     @Column(name = "ref")

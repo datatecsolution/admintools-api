@@ -6,6 +6,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 
@@ -30,10 +32,14 @@ public class ArticuloKardex {
     @Column(name = "codigo_bodega")
     private Integer codigoBodega;
 
+    // Columnas legacy float(8,2): se mapean como REAL para que ddl-auto=validate
+    // no exija DECIMAL (el kardex no se migró a decimal, a diferencia de V13).
     @Column(name = "cantidad_minima")
+    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal cantidadMinima;
 
     @Column(name = "cantidad_maxima")
+    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal cantidadMaxima;
 
     @Column(name = "metodo")
