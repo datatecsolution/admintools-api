@@ -7,6 +7,7 @@ package net.datatecsolution.admintools.domain.dto;
 public record CategoryResponse(
         Integer id,
         String name,
-        String description
+        String description,
+        Boolean posVisible
 ) {
 }

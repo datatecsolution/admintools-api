@@ -15,6 +15,9 @@ public record CategoryRequest(
         String name,
 
         @Size(max = 145, message = "La descripcion no puede exceder 145 caracteres")
-        String description
+        String description,
+
+        /** ¿Mostrar/seleccionar esta categoría en el POS táctil? (null = false). */
+        Boolean posVisible
 ) {
 }

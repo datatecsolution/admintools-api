@@ -42,6 +42,7 @@ public class CategoryService {
 
     public CategoryResponse create(CategoryRequest request) {
         Categoria entity = mapper.fromRequest(request);
+        entity.setMostrarPos(Boolean.TRUE.equals(request.posVisible()));
         return mapper.toResponse(crud.save(entity));
     }
 
@@ -50,6 +51,7 @@ public class CategoryService {
                 .orElseThrow(() -> new EntityNotFoundException("Categoria " + id + " no encontrada"));
         existing.setDescripcion(request.name());
         existing.setObservacion(request.description());
+        existing.setMostrarPos(Boolean.TRUE.equals(request.posVisible()));
         return mapper.toResponse(crud.save(existing));
     }
 
