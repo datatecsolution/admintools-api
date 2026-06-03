@@ -9,11 +9,17 @@ import java.util.List;
 
 /**
  * Checkout POS — crear factura directo desde el carrito (sin orden).
- * {@code tipoFactura}: 1=contado, 2=crédito. Para crédito, {@code customerId}
- * debe ser un cliente real (>0).
+ * {@code tipoFactura}: 1=contado, 2=crédito.
+ *
+ * Cliente: si {@code customerId} es válido (>0) se factura a ese cliente; si no
+ * y viene {@code customerName}, se registra un cliente <b>contado (tipo 1)</b>
+ * al vuelo (fiel al Swing {@code registrarClienteContado}) y se factura a él. Si
+ * no hay ninguno, cae a Consumidor final (id 1). El <b>crédito exige un cliente
+ * gestionado (tipo 2)</b>; contado/escritos (tipo 1) no pueden recibir crédito.
  */
 public record InvoiceCreateRequest(
-        @NotNull Integer customerId,
+        Integer customerId,
+        String customerName,
         @NotNull Integer tipoFactura,
         Integer tipoPago,
         Integer vendedorId,

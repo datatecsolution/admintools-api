@@ -196,13 +196,17 @@ public class InvoiceService {
         String user = principal != null ? principal.getName() : "SYSTEM";
         boolean credito = req.tipoFactura() != null && req.tipoFactura() == 2;
 
-        Integer customerId = req.customerId();
-        if (credito && (customerId == null || customerId <= 0)) {
+        // Resolver cliente (fiel al Swing): id valido -> ese; si no y hay nombre
+        // escrito -> registrar contado (tipo 1) al vuelo; si no -> Consumidor final.
+        Cliente cliente = resolveCustomer(req);
+        int customerId = cliente.getId();
+
+        // Credito: solo clientes gestionados (tipo 2). Contado/escritos (tipo 1) no.
+        if (credito && (cliente.getTipoCliente() == null || cliente.getTipoCliente() != 2)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Una venta a credito requiere un cliente valido");
+                    "El credito solo aplica a clientes registrados (gestionados); "
+                    + "el cliente seleccionado es de contado.");
         }
-        clienteCRUD.findById(customerId)
-                .orElseThrow(() -> new EntityNotFoundException("Cliente " + customerId + " no encontrado"));
 
         // % ISV por taxId (autoritativo, server-side)
         Map<Integer, Integer> percentByTax = percentByTax();
@@ -223,7 +227,7 @@ public class InvoiceService {
         EncabezadoFactura savedHeader = tenantTx.execute(status -> {
             int codRango = datosFacturaCRUD.findTopByOrderByCodigoRangoDesc()
                     .map(d -> d.getCodigoRango()).orElse(1);
-            EncabezadoFactura header = buildHeaderDirect(req, tot, user, credito, codRango, dueDays, codigoVendedor);
+            EncabezadoFactura header = buildHeaderDirect(req, customerId, tot, user, credito, codRango, dueDays, codigoVendedor);
             EncabezadoFactura sh = encabezadoFacturaCRUD.save(header);
             for (InvoiceLineRequest l : req.lines()) {
                 detalleFacturaCRUD.save(buildLineDirect(l, sh.getNumeroFactura(),
@@ -247,6 +251,36 @@ public class InvoiceService {
         return loadResponse(savedHeader.getNumeroFactura(), tenant);
     }
 
+    private static final int CLIENTE_CONSUMIDOR_FINAL = 1;
+    private static final int TIPO_CLIENTE_CONTADO = 1;
+
+    /**
+     * Resuelve el cliente de la factura (fiel al Swing {@code registrarClienteContado}):
+     * <ul>
+     *   <li>{@code customerId} válido (&gt;0) → ese cliente;</li>
+     *   <li>si no y hay {@code customerName} → registra un cliente de contado
+     *       (tipo 1) al vuelo y factura a él (no aparece en el admin);</li>
+     *   <li>si no → Consumidor final (id 1).</li>
+     * </ul>
+     */
+    private Cliente resolveCustomer(InvoiceCreateRequest req) {
+        Integer id = req.customerId();
+        if (id != null && id > 0) {
+            return clienteCRUD.findById(id)
+                    .orElseThrow(() -> new EntityNotFoundException("Cliente " + id + " no encontrado"));
+        }
+        String nombre = req.customerName() == null ? "" : req.customerName().trim();
+        if (nombre.isEmpty()) {
+            return clienteCRUD.findById(CLIENTE_CONSUMIDOR_FINAL)
+                    .orElseThrow(() -> new EntityNotFoundException("Consumidor final (id 1) no existe"));
+        }
+        Cliente nuevo = new Cliente();
+        nuevo.setNombre(nombre);
+        nuevo.setTipoCliente(TIPO_CLIENTE_CONTADO);
+        nuevo.setIdVendedor(1);
+        return commonTx.execute(s -> clienteCRUD.save(nuevo));
+    }
+
     /** Mapa taxId -> porcentaje (int) desde el catalogo de impuestos. */
     private Map<Integer, Integer> percentByTax() {
         Map<Integer, Integer> map = new java.util.HashMap<>();
@@ -264,6 +298,7 @@ public class InvoiceService {
     }
 
     private EncabezadoFactura buildHeaderDirect(InvoiceCreateRequest req,
+                                                int customerId,
                                                 FacturacionCalculadora.Totales tot,
                                                 String user, boolean credito,
                                                 int codRango, int dueDays, int codigoVendedor) {
@@ -278,7 +313,7 @@ public class InvoiceService {
         h.setIsvOtros(tot.getOtrosImpuestos());
         h.setTotal(tot.getTotal());
         h.setDescuento(tot.getDescuento());
-        h.setCodigoCliente(String.valueOf(req.customerId()));
+        h.setCodigoCliente(String.valueOf(customerId));
         h.setCodigo("1");                   // mirror Swing (FacturaDao)
         h.setEstadoFactura("ACT");
         h.setUsuario(user);

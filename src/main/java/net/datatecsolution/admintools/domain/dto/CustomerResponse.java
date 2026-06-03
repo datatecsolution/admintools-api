@@ -9,6 +9,8 @@ public record CustomerResponse(
         String name,
         String rtn,
         String address,
-        String phone
+        String phone,
+        /** 1 = contado/rápido; 2 = gestionado (elegible a crédito). */
+        Integer tipoCliente
 ) {
 }
