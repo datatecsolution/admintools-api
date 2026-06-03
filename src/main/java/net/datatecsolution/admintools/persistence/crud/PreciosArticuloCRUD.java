@@ -4,9 +4,17 @@ import net.datatecsolution.admintools.persistence.entity.PrecioArticulo;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface PreciosArticuloCRUD extends JpaRepository<PrecioArticulo, Integer> {
+
+    /**
+     * Precios de un tipo (codigo_precio) para un conjunto de articulos. Resuelve
+     * el "Precio Público General" (codigo_precio=1) del catálogo del POS en una
+     * sola query por página.
+     */
+    List<PrecioArticulo> findByPrecioIdAndArticuloIdIn(Integer precioId, Collection<Integer> articuloIds);
 
     @Query(value = "SELECT precios_articulos.codigo_articulo, " +
             " precios_articulos.precio_articulo, " +
