@@ -215,7 +215,9 @@ public class Orden {
 					//se calcula el total del item
 					BigDecimal totalItem=cantidad.multiply(precioVenta);
 
-					BigDecimal des =detalle.getDescuentoItem();
+					BigDecimal des = detalle.getDescuentoItem() != null
+							? detalle.getDescuentoItem() : BigDecimal.ZERO;
+					detalle.setDescuentoItem(des); // normaliza null -> 0 (evita NPE + columna NOT NULL)
 
 					totalItem=totalItem.subtract(des.setScale(2, BigDecimal.ROUND_HALF_EVEN));
 					//int desc=detalle.getDescuento();
@@ -265,7 +267,7 @@ public class Orden {
 					}
 
 					setSubTotal(getSubTotal().add(totalsiniva.setScale(2, BigDecimal.ROUND_HALF_EVEN)));
-					setTotalDescuento(getTotalDescuento().add(detalle.getDescuentoItem().setScale(2, BigDecimal.ROUND_HALF_EVEN)));
+					setTotalDescuento(getTotalDescuento().add(des.setScale(2, BigDecimal.ROUND_HALF_EVEN)));
 
 					detalle.setSubTotal(totalsiniva.setScale(2, BigDecimal.ROUND_HALF_EVEN));
 					detalle.setImpuesto(impuestoItem.setScale(2, BigDecimal.ROUND_HALF_EVEN));
@@ -277,6 +279,12 @@ public class Orden {
 				}//fin del if
 
 		}//fin del for
+
+		// isvOtros (columna persistida, NOT NULL) = otros impuestos calculados.
+		// El mapper la deja null cuando el payload no envia isvOther (p.ej. POS);
+		// como aqui ya se recalculan todos los totales desde las lineas, la
+		// sincronizamos para que nunca sea null y refleje el calculo.
+		setIsvOtros(getTotalOtrosImpuesto() != null ? getTotalOtrosImpuesto() : BigDecimal.ZERO);
 	}
 	@Override
 	public String toString(){

@@ -57,6 +57,7 @@ public class OrdenRepository implements OrderRepository {
     @Override
     public Order save(Order order, String user) {
         Orden orden = mapper.toOrden(order);
+        orden.setUsuario(user); // usuario autenticado (el payload puede no traerlo, p.ej. POS)
         log.debug("save() inicial idFactura={}", orden.getIdFactura());
 
         if (orden.getIdFactura() == null) {
