@@ -1,10 +1,12 @@
 package net.datatecsolution.admintools.domain.service;
 
+import net.datatecsolution.admintools.config.TenantContext;
 import net.datatecsolution.admintools.domain.dto.CajaResponse;
 import net.datatecsolution.admintools.persistence.crud.CajaCRUD;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -26,5 +28,18 @@ public class CajaCatalogService {
                 .map(c -> new CajaResponse(c.getCodigo(), c.getDescripcion(),
                         c.getCodigoBodega(), c.getNombreDb()))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Caja de la sesión actual: se resuelve por el tenant del JWT
+     * (TenantContext guarda el nombre_db de la caja). Para mostrar la caja
+     * activa en el POS sin exponer /users (ADMIN).
+     */
+    public Optional<CajaResponse> getCurrent() {
+        String tenant = TenantContext.getTenant();
+        if (tenant == null || tenant.isBlank()) return Optional.empty();
+        return crud.findByNombreDb(tenant)
+                .map(c -> new CajaResponse(c.getCodigo(), c.getDescripcion(),
+                        c.getCodigoBodega(), c.getNombreDb()));
     }
 }
