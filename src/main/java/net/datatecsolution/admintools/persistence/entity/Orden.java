@@ -280,11 +280,12 @@ public class Orden {
 
 		}//fin del for
 
-		// isvOtros (columna persistida, NOT NULL) = otros impuestos calculados.
-		// El mapper la deja null cuando el payload no envia isvOther (p.ej. POS);
-		// como aqui ya se recalculan todos los totales desde las lineas, la
-		// sincronizamos para que nunca sea null y refleje el calculo.
-		setIsvOtros(getTotalOtrosImpuesto() != null ? getTotalOtrosImpuesto() : BigDecimal.ZERO);
+		// isvOtros (columna NOT NULL): SOLO si el payload no la trajo (null, p.ej.
+		// el POS). Si la app de pedidos la envia (isvOther), se preserva tal cual
+		// para no alterar el comportamiento en produccion.
+		if (getIsvOtros() == null) {
+			setIsvOtros(getTotalOtrosImpuesto() != null ? getTotalOtrosImpuesto() : BigDecimal.ZERO);
+		}
 	}
 	@Override
 	public String toString(){

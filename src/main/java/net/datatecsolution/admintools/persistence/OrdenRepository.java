@@ -57,7 +57,11 @@ public class OrdenRepository implements OrderRepository {
     @Override
     public Order save(Order order, String user) {
         Orden orden = mapper.toOrden(order);
-        orden.setUsuario(user); // usuario autenticado (el payload puede no traerlo, p.ej. POS)
+        // SOLO si el payload no trae usuario (p.ej. POS). Si la app de pedidos lo
+        // envia, se preserva — no se altera el comportamiento en produccion.
+        if (orden.getUsuario() == null || orden.getUsuario().isBlank()) {
+            orden.setUsuario(user);
+        }
         log.debug("save() inicial idFactura={}", orden.getIdFactura());
 
         if (orden.getIdFactura() == null) {
