@@ -33,7 +33,10 @@ public interface OrderDetailsMapper {
     @InheritInverseConfiguration
     @Mappings({
             @Mapping(target = "art", ignore = true),
-            @Mapping(target = "idDetalle", ignore = true),
+            // idDetalle SÍ se mapea (detailId→idDetalle): sin esto, en cada UPDATE
+            // de orden todas las líneas se borraban (orphanRemoval) y se
+            // reinsertaban con id nuevo. Con el id presente, merge reutiliza la
+            // fila existente. En INSERT el detailId viene null → inserta igual.
             @Mapping(target = "totalVentasCosto", ignore = true),
             @Mapping(target = "ganancia", ignore = true),
             @Mapping(target = "accion", ignore = true),
