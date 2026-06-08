@@ -21,4 +21,9 @@ public interface ConfigUserFacturacionCRUD extends JpaRepository<ConfigUserFactu
     @Query(value = "SELECT ventana_observaciones FROM config_user_facturacion WHERE usuario = :usuario LIMIT 1",
             nativeQuery = true)
     Optional<Integer> findVentanaObservaciones(@Param("usuario") String usuario);
+
+    /** ¿El descuento se ingresa en porcentaje? (1=%, 0=monto en L). */
+    @Query(value = "SELECT descuento_porcentaje FROM config_user_facturacion WHERE usuario = :usuario LIMIT 1",
+            nativeQuery = true)
+    Optional<Integer> findDescuentoPorcentaje(@Param("usuario") String usuario);
 }

@@ -32,12 +32,15 @@ public class SellerCatalogService {
     public SellerSettingsResponse getSettings(String user) {
         boolean ventanaObservaciones =
                 configUserFacturacionCRUD.findVentanaObservaciones(user).orElse(0) == 1;
+        boolean descuentoEnPorcentaje =
+                configUserFacturacionCRUD.findDescuentoPorcentaje(user).orElse(0) == 1;
         List<SellerResponse> sellers = empleadoCRUD.findAll().stream()
                 .map(e -> new SellerResponse(
                         e.getCodigo(),
                         (e.getNombre() + " " + e.getApellido()).trim()))
                 .toList();
-        return new SellerSettingsResponse(isVentanaVendedor(user), ventanaObservaciones, sellers);
+        return new SellerSettingsResponse(
+                isVentanaVendedor(user), ventanaObservaciones, descuentoEnPorcentaje, sellers);
     }
 
     /**
