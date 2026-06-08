@@ -18,16 +18,37 @@ public interface OrdenCRUD extends CrudRepository<Orden,Integer> {
     List<Orden> getAllByOrderByFechaDesc();
     List<Orden> findByFechaOrderByFechaDesc(LocalDate fecha);
 
-    Orden findByIdFacturaAndUsuario(int idA, String user);
-
+   /**
+    * Una orden por id, visible para el usuario según la regla del Swing: el
+    * vendedor (empleado) tiene {@code empleados.usuario = :usuario}, O la orden
+    * la creó ese usuario ({@code encabezado_factura_temp.usuario = :usuario}).
+    * Devuelve null si no existe o no es visible.
+    */
+   @Query(value =
+           "SELECT e.* FROM encabezado_factura_temp e " +
+           "LEFT JOIN empleados emp ON e.codigo_vendedor = emp.codigo_empleado " +
+           "WHERE e.numero_factura = :id " +
+           "AND (emp.usuario = :usuario OR e.usuario = :usuario) LIMIT 1",
+           nativeQuery = true)
+   Orden findByIdFacturaVisible(@Param("id") int id, @Param("usuario") String usuario);
 
    /**
-    * Órdenes pendientes del día por usuario. Filtra {@code estado < estadoMax}
-    * (1=guardada, 2=actualizada) para excluir las anuladas (estado 5, borrado
-    * lógico) y cualquier otro estado >= 3, fiel al Swing.
+    * Órdenes pendientes del día VISIBLES para el usuario, fiel al filtro del
+    * Swing ({@code FacturaOrdenVentaDao.ordenesPorEmpleadosUsuarios}): el
+    * vendedor (empleado) tiene {@code empleados.usuario = :usuario}, O la orden
+    * la creó ese usuario. {@code estado < :estadoMax} excluye anuladas (5) y
+    * cualquier estado >= 3; acotado al rango del día.
     */
-   List<Orden> findByFechaIsBetweenAndUsuarioAndEstadoLessThanOrderByFechaDesc(
-           LocalDateTime fecha, LocalDateTime fecha2, String usuario, Integer estadoMax);
+   @Query(value =
+           "SELECT e.* FROM encabezado_factura_temp e " +
+           "LEFT JOIN empleados emp ON e.codigo_vendedor = emp.codigo_empleado " +
+           "WHERE e.estado < :estadoMax AND e.fecha BETWEEN :inicio AND :fin " +
+           "AND (emp.usuario = :usuario OR e.usuario = :usuario) " +
+           "ORDER BY e.fecha DESC",
+           nativeQuery = true)
+   List<Orden> findPendientesDelDiaVisibles(
+           @Param("inicio") LocalDateTime inicio, @Param("fin") LocalDateTime fin,
+           @Param("usuario") String usuario, @Param("estadoMax") Integer estadoMax);
 
    /**
     * Borrado lógico: marca la orden con el estado dado (5=anulada) en vez de

@@ -136,9 +136,11 @@ public class OrdenRepository implements OrderRepository {
         LocalDateTime finDelDia = hoy.atTime(23, 59, 59).atZone(hondurasZone)
                 .withZoneSameInstant(jvmZone)
                 .toLocalDateTime();
-        // estado < 3 → solo pendientes (1=guardada, 2=actualizada); excluye las
-        // anuladas (estado 5, borrado lógico) y cualquier otro estado >= 3.
-        List<Orden> ordenes = ordenCRUD.findByFechaIsBetweenAndUsuarioAndEstadoLessThanOrderByFechaDesc(
+        // Visibilidad fiel al Swing: la orden la creó el usuario (encabezado.
+        // usuario) O su vendedor (empleado) está marcado con ese usuario
+        // (empleados.usuario). estado < 3 → solo pendientes (1=guardada,
+        // 2=actualizada); excluye anuladas (5) y cualquier estado >= 3.
+        List<Orden> ordenes = ordenCRUD.findPendientesDelDiaVisibles(
                 inicioDelDia, finDelDia, user, 3);
 
         //se recorre las ordenes para cambiar los precios que puede cambiar el usuario
@@ -165,7 +167,12 @@ public class OrdenRepository implements OrderRepository {
     }
     @Override
     public Optional<Order> getOrderUser(int orderId, String user){
-        return Optional.of(mapper.toOrder(ordenCRUD.findByIdFacturaAndUsuario(orderId,user)));
+        // ofNullable + map: si la orden no existe o no es VISIBLE para el usuario
+        // (regla Swing: empleados.usuario O encabezado.usuario) devuelve
+        // Optional.empty() → el controller responde 404 limpio. Antes era
+        // Optional.of(mapper.toOrder(null)) → NPE → 500.
+        return Optional.ofNullable(ordenCRUD.findByIdFacturaVisible(orderId, user))
+                .map(mapper::toOrder);
     }
 
     @Override
