@@ -34,9 +34,19 @@ public class AuthCtl {
 
             final String jwt = jwtUtil.generateToken(userDetails);
 
+            // Rol primario (ROLE_X derivado de tipo_permiso) sin el prefijo
+            // ROLE_, para que el frontend enrute por privilegio (p.ej. CASHIER).
+            String role = userDetails.getAuthorities().stream()
+                    .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                    .filter(a -> a.startsWith("ROLE_"))
+                    .findFirst()
+                    .map(a -> a.substring(5))
+                    .orElse("USER");
+
             java.util.Map<String, String> response = new java.util.HashMap<>();
             response.put("token", jwt);
             response.put("username", userDetails.getUsername());
+            response.put("role", role);
 
             return ResponseEntity.ok(response);
         } catch (AuthenticationException e) {
@@ -59,9 +69,16 @@ public class AuthCtl {
 
                 if (jwtUtil.validateToken(token, userDetails)) {
                     final String jwt = jwtUtil.generateToken(userDetails);
+                    String role = userDetails.getAuthorities().stream()
+                            .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                            .filter(a -> a.startsWith("ROLE_"))
+                            .findFirst()
+                            .map(a -> a.substring(5))
+                            .orElse("USER");
                     java.util.Map<String, String> response = new java.util.HashMap<>();
                     response.put("token", jwt);
                     response.put("username", userDetails.getUsername());
+                    response.put("role", role);
                     return ResponseEntity.ok(response);
                 }
             }

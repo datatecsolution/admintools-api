@@ -49,6 +49,7 @@ public class ClienteRepository implements CustomerRepository {
     public Customer create(Customer customer, int sellerId) {
         Cliente entity = mapper.toCliente(customer);
         entity.setIdVendedor(sellerId);
+        entity.setTipoCliente(2);   // gestionado: solo estos se listan/editan en admin y reciben crédito
         return mapper.toCustomer(clienteCRUD.save(entity));
     }
 

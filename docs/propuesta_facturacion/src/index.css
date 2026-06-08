@@ -1,0 +1,62 @@
+@import 'tailwindcss';
+
+/*
+ * Sprint 4 #52 setup — tema claro/oscuro con CSS variables.
+ * Tailwind v4 honra la clase 'dark' en <html> automaticamente via
+ * `@custom-variant dark`. ui-store.ts pone/quita esa clase segun el
+ * theme guardado en localStorage.
+ *
+ * Sprint 4.5 patch: las CSS vars se guardan como `rgb(...)` completo
+ * (no como triple suelto). Tailwind v4 hace el lookup como literal en
+ * `bg-(--color-X)`, asi que necesita un color valido. Si en el futuro
+ * se requiere el patron `bg-(--color-X)/50`, hay que mover a tokens
+ * `@theme` o re-introducir triples + reescribir esos sitios con
+ * `bg-[rgb(var(--color-X))/N]`.
+ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --color-bg: rgb(248 250 252); /* slate-50 */
+    --color-fg: rgb(15 23 42); /* slate-900 */
+    --color-surface: rgb(255 255 255);
+    --color-border: rgb(226 232 240); /* slate-200 */
+    --color-muted: rgb(100 116 139); /* slate-500 */
+    --color-primary: rgb(22 163 74); /* green-600 */
+    --color-primary-fg: rgb(255 255 255);
+    --color-danger: rgb(220 38 38); /* red-600 */
+  }
+
+  .dark {
+    --color-bg: rgb(15 23 42); /* slate-900 */
+    --color-fg: rgb(248 250 252); /* slate-50 */
+    --color-surface: rgb(30 41 59); /* slate-800 */
+    --color-border: rgb(51 65 85); /* slate-700 */
+    --color-muted: rgb(148 163 184); /* slate-400 */
+    --color-primary: rgb(34 197 94); /* green-500 */
+    --color-primary-fg: rgb(15 23 42);
+    --color-danger: rgb(248 113 113); /* red-400 */
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      Roboto,
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}

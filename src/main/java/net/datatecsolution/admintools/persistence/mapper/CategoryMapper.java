@@ -47,13 +47,15 @@ public interface CategoryMapper {
     @Mappings({
             @Mapping(source = "id",          target = "id"),
             @Mapping(source = "descripcion", target = "name"),
-            @Mapping(source = "observacion", target = "description")
+            @Mapping(source = "observacion", target = "description"),
+            @Mapping(source = "mostrarPos",  target = "posVisible")
     })
     CategoryResponse toResponse(Categoria categoria);
 
     @Mappings({
             @Mapping(target = "id",          ignore = true),
             @Mapping(target = "articulos",   ignore = true),
+            @Mapping(target = "mostrarPos",  ignore = true), // lo setea el service (null -> false)
             @Mapping(source = "name",        target = "descripcion"),
             @Mapping(source = "description", target = "observacion")
     })

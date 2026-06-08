@@ -60,9 +60,15 @@ public class OrderService {
         return orderRepository.getByToday(user);
     }
 
-    public boolean delete(int orderId, String user) {
+    public boolean delete(int orderId, String user, boolean fisico) {
         return getOrderUser(orderId, user).map(order -> {
-            orderRepository.delete(orderId);
+            // Físico solo lo pide la app de órdenes (?fisico=true); el POS no
+            // manda el flag, así que cae en el lógico (estado 5 = anulada).
+            if (fisico) {
+                orderRepository.deletePhysical(orderId);
+            } else {
+                orderRepository.delete(orderId);
+            }
             return true;
         }).orElse(false);
     }

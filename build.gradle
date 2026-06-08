@@ -33,6 +33,8 @@ dependencies {
     // US-019: validacion de DTOs de entrada (@Valid, @NotBlank, etc.)
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // US-033: @WithMockUser para probar @PreAuthorize en los slices @WebMvcTest
+    testImplementation 'org.springframework.security:spring-security-test'
     implementation group: 'mysql', name: 'mysql-connector-java', version: '8.0.33'
     implementation 'org.mapstruct:mapstruct:1.5.5.Final'
     annotationProcessor 'org.mapstruct:mapstruct-processor:1.5.5.Final'

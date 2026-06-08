@@ -17,6 +17,10 @@ public class Categoria {
     @Column(name = "observacion")
     private String observacion;
 
+    /** ¿La categoría se muestra/selecciona en el POS táctil? (mostrar_pos, V29). */
+    @Column(name = "mostrar_pos")
+    private Boolean mostrarPos = false;
+
     @OneToMany(mappedBy = "categoria")
     private List<Articulo> articulos;
 
@@ -43,6 +47,14 @@ public class Categoria {
 
     public void setObservacion(String observacion) {
         this.observacion = observacion;
+    }
+
+    public Boolean getMostrarPos() {
+        return mostrarPos;
+    }
+
+    public void setMostrarPos(Boolean mostrarPos) {
+        this.mostrarPos = mostrarPos;
     }
 
     public List<Articulo> getArticulos() {

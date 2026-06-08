@@ -57,6 +57,11 @@ public class OrdenRepository implements OrderRepository {
     @Override
     public Order save(Order order, String user) {
         Orden orden = mapper.toOrden(order);
+        // SOLO si el payload no trae usuario (p.ej. POS). Si la app de pedidos lo
+        // envia, se preserva — no se altera el comportamiento en produccion.
+        if (orden.getUsuario() == null || orden.getUsuario().isBlank()) {
+            orden.setUsuario(user);
+        }
         log.debug("save() inicial idFactura={}", orden.getIdFactura());
 
         if (orden.getIdFactura() == null) {
@@ -131,7 +136,12 @@ public class OrdenRepository implements OrderRepository {
         LocalDateTime finDelDia = hoy.atTime(23, 59, 59).atZone(hondurasZone)
                 .withZoneSameInstant(jvmZone)
                 .toLocalDateTime();
-        List<Orden> ordenes = (List<Orden>) ordenCRUD.findByFechaIsBetweenAndUsuarioOrderByFechaDesc(inicioDelDia, finDelDia,user);
+        // Visibilidad fiel al Swing: la orden la creó el usuario (encabezado.
+        // usuario) O su vendedor (empleado) está marcado con ese usuario
+        // (empleados.usuario). estado < 3 → solo pendientes (1=guardada,
+        // 2=actualizada); excluye anuladas (5) y cualquier estado >= 3.
+        List<Orden> ordenes = ordenCRUD.findPendientesDelDiaVisibles(
+                inicioDelDia, finDelDia, user, 3);
 
         //se recorre las ordenes para cambiar los precios que puede cambiar el usuario
         for (Orden orden : ordenes) {
@@ -157,11 +167,26 @@ public class OrdenRepository implements OrderRepository {
     }
     @Override
     public Optional<Order> getOrderUser(int orderId, String user){
-        return Optional.of(mapper.toOrder(ordenCRUD.findByIdFacturaAndUsuario(orderId,user)));
+        // ofNullable + map: si la orden no existe o no es VISIBLE para el usuario
+        // (regla Swing: empleados.usuario O encabezado.usuario) devuelve
+        // Optional.empty() → el controller responde 404 limpio. Antes era
+        // Optional.of(mapper.toOrder(null)) → NPE → 500.
+        return Optional.ofNullable(ordenCRUD.findByIdFacturaVisible(orderId, user))
+                .map(mapper::toOrder);
     }
 
     @Override
     public void delete(int orderId) {
+        // Borrado LÓGICO (estado 5 = anulada): NO se elimina la fila — conserva
+        // la traza, fiel al Swing. getByToday filtra estado<3, así que la orden
+        // anulada deja de aparecer en el listado.
+        ordenCRUD.updateEstado(orderId, 5);
+    }
+
+    @Override
+    public void deletePhysical(int orderId) {
+        // Borrado FÍSICO: elimina la fila (cascade borra los detalles). Lo usa
+        // la app de órdenes; el POS solo hace el lógico de arriba.
         ordenCRUD.deleteById(orderId);
     }
 

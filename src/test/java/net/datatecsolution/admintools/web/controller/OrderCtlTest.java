@@ -15,14 +15,17 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.server.ResponseStatusException;
 
+import javax.sql.DataSource;
 import java.security.Principal;
 import java.util.Collections;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -50,6 +53,11 @@ class OrderCtlTest {
 
     @MockBean
     private CustomUserDetailsService customUserDetailsService;
+
+    // Requerido por TenantInterceptor (HandlerInterceptor que el slice levanta);
+    // su preHandle tolera getConnection() nulo, asi que el mock basta.
+    @MockBean(name = "commonDataSource")
+    private DataSource commonDataSource;
 
     private static final Principal RONAL = () -> "ronal";
 
@@ -130,7 +138,7 @@ class OrderCtlTest {
 
     @Test
     void delete_existente_retorna200() throws Exception {
-        when(orderService.delete(anyInt(), eq("ronal"))).thenReturn(true);
+        when(orderService.delete(anyInt(), eq("ronal"), anyBoolean())).thenReturn(true);
 
         mockMvc.perform(delete("/orders/delete/5").principal(RONAL))
                 .andExpect(status().isOk());
@@ -138,9 +146,31 @@ class OrderCtlTest {
 
     @Test
     void delete_inexistente_retorna404() throws Exception {
-        when(orderService.delete(anyInt(), eq("ronal"))).thenReturn(false);
+        when(orderService.delete(anyInt(), eq("ronal"), anyBoolean())).thenReturn(false);
 
         mockMvc.perform(delete("/orders/delete/999").principal(RONAL))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void delete_sinFlag_esLogico() throws Exception {
+        when(orderService.delete(anyInt(), eq("ronal"), anyBoolean())).thenReturn(true);
+
+        mockMvc.perform(delete("/orders/delete/5").principal(RONAL))
+                .andExpect(status().isOk());
+
+        // POS: sin ?fisico → borrado lógico (estado 5).
+        verify(orderService).delete(5, "ronal", false);
+    }
+
+    @Test
+    void delete_conFlagFisico_esFisico() throws Exception {
+        when(orderService.delete(anyInt(), eq("ronal"), anyBoolean())).thenReturn(true);
+
+        mockMvc.perform(delete("/orders/delete/5?fisico=true").principal(RONAL))
+                .andExpect(status().isOk());
+
+        // App de órdenes: ?fisico=true → borrado físico de la fila.
+        verify(orderService).delete(5, "ronal", true);
     }
 }

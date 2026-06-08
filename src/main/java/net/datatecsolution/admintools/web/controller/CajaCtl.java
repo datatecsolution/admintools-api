@@ -30,4 +30,12 @@ public class CajaCtl {
     public ResponseEntity<List<CajaResponse>> getAll() {
         return ResponseEntity.ok(service.getAll());
     }
+
+    @GetMapping("/current")
+    @Operation(summary = "Caja de la sesión actual (resuelta por el tenant del JWT)")
+    public ResponseEntity<CajaResponse> getCurrent() {
+        return service.getCurrent()
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
 }

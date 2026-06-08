@@ -12,6 +12,16 @@ public class Customer {
     private String customerRTN;
     private String customerAdress;
     private String customerTelephoneNumber;
+    /** 1 = contado/rápido (oculto en admin, sin crédito); 2 = gestionado. */
+    private Integer tipoCliente;
+
+    public Integer getTipoCliente() {
+        return tipoCliente;
+    }
+
+    public void setTipoCliente(Integer tipoCliente) {
+        this.tipoCliente = tipoCliente;
+    }
 
     public Integer getCustomerId() {
         return customerId;

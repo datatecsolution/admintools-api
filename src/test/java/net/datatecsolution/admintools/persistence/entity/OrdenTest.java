@@ -8,14 +8,14 @@ import java.util.Collections;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-class FacturaTest {
+class OrdenTest {
 
     @Test
     void calcularTotales_noModificaLaFechaExistente() {
         // Regresion: antes calcularTotales() reseteaba fecha=now() en cada
         // save, lo que migraba ordenes editadas al dia actual y rompia el
         // filtro getByToday. Ahora la fecha solo se setea en @PrePersist.
-        Factura f = new Factura();
+        Orden f = new Orden();
         LocalDateTime fechaOriginal = LocalDateTime.of(2026, 1, 15, 9, 30);
         f.setFecha(fechaOriginal);
         f.setDetalles(Collections.emptyList());
@@ -31,7 +31,7 @@ class FacturaTest {
         // Caso de orden recien instanciada antes de pasar por JPA. El
         // @PrePersist sera quien setee la fecha en el INSERT — el metodo
         // no debe adelantarse.
-        Factura f = new Factura();
+        Orden f = new Orden();
         f.setDetalles(Collections.emptyList());
 
         f.calcularTotales();

@@ -215,7 +215,9 @@ public class Orden {
 					//se calcula el total del item
 					BigDecimal totalItem=cantidad.multiply(precioVenta);
 
-					BigDecimal des =detalle.getDescuentoItem();
+					BigDecimal des = detalle.getDescuentoItem() != null
+							? detalle.getDescuentoItem() : BigDecimal.ZERO;
+					detalle.setDescuentoItem(des); // normaliza null -> 0 (evita NPE + columna NOT NULL)
 
 					totalItem=totalItem.subtract(des.setScale(2, BigDecimal.ROUND_HALF_EVEN));
 					//int desc=detalle.getDescuento();
@@ -265,7 +267,7 @@ public class Orden {
 					}
 
 					setSubTotal(getSubTotal().add(totalsiniva.setScale(2, BigDecimal.ROUND_HALF_EVEN)));
-					setTotalDescuento(getTotalDescuento().add(detalle.getDescuentoItem().setScale(2, BigDecimal.ROUND_HALF_EVEN)));
+					setTotalDescuento(getTotalDescuento().add(des.setScale(2, BigDecimal.ROUND_HALF_EVEN)));
 
 					detalle.setSubTotal(totalsiniva.setScale(2, BigDecimal.ROUND_HALF_EVEN));
 					detalle.setImpuesto(impuestoItem.setScale(2, BigDecimal.ROUND_HALF_EVEN));
@@ -277,6 +279,13 @@ public class Orden {
 				}//fin del if
 
 		}//fin del for
+
+		// isvOtros (columna NOT NULL): SOLO si el payload no la trajo (null, p.ej.
+		// el POS). Si la app de pedidos la envia (isvOther), se preserva tal cual
+		// para no alterar el comportamiento en produccion.
+		if (getIsvOtros() == null) {
+			setIsvOtros(getTotalOtrosImpuesto() != null ? getTotalOtrosImpuesto() : BigDecimal.ZERO);
+		}
 	}
 	@Override
 	public String toString(){

@@ -1,13 +1,21 @@
 package net.datatecsolution.admintools.domain.service;
 
+import jakarta.persistence.EntityNotFoundException;
 import net.datatecsolution.admintools.config.TenantContext;
+import net.datatecsolution.admintools.core.FacturacionCalculadora;
+import net.datatecsolution.admintools.domain.dto.InvoiceCreateRequest;
+import net.datatecsolution.admintools.domain.dto.InvoiceLineRequest;
 import net.datatecsolution.admintools.domain.dto.InvoiceLineResponse;
 import net.datatecsolution.admintools.domain.dto.InvoiceResponse;
+import net.datatecsolution.admintools.persistence.crud.CajaCRUD;
 import net.datatecsolution.admintools.persistence.crud.ClienteCRUD;
+import net.datatecsolution.admintools.persistence.crud.ConfigAppCRUD;
+import net.datatecsolution.admintools.persistence.crud.ImpuestoCRUD;
 import net.datatecsolution.admintools.persistence.crud.OrdenCRUD;
 import net.datatecsolution.admintools.persistence.entity.Cliente;
 import net.datatecsolution.admintools.persistence.entity.DetalleOrden;
 import net.datatecsolution.admintools.persistence.entity.Orden;
+import net.datatecsolution.admintools.persistence.tenant.crud.DatosFacturaCRUD;
 import net.datatecsolution.admintools.persistence.tenant.crud.DetalleFacturaCRUD;
 import net.datatecsolution.admintools.persistence.tenant.crud.EncabezadoFacturaCRUD;
 import net.datatecsolution.admintools.persistence.tenant.entity.DetalleFactura;
@@ -80,6 +88,12 @@ public class InvoiceService {
     private final ClienteCRUD clienteCRUD;
     private final EncabezadoFacturaCRUD encabezadoFacturaCRUD;
     private final DetalleFacturaCRUD detalleFacturaCRUD;
+    private final CajaCRUD cajaCRUD;
+    private final ConfigAppCRUD configAppCRUD;
+    private final ImpuestoCRUD impuestoCRUD;
+    private final DatosFacturaCRUD datosFacturaCRUD;
+    private final AccountsReceivableService accountsReceivableService;
+    private final SellerCatalogService sellerCatalogService;
     private final TransactionTemplate commonTx;
     private final TransactionTemplate tenantTx;
 
@@ -87,12 +101,24 @@ public class InvoiceService {
                           ClienteCRUD clienteCRUD,
                           EncabezadoFacturaCRUD encabezadoFacturaCRUD,
                           DetalleFacturaCRUD detalleFacturaCRUD,
+                          CajaCRUD cajaCRUD,
+                          ConfigAppCRUD configAppCRUD,
+                          ImpuestoCRUD impuestoCRUD,
+                          DatosFacturaCRUD datosFacturaCRUD,
+                          AccountsReceivableService accountsReceivableService,
+                          SellerCatalogService sellerCatalogService,
                           @Qualifier("transactionManager") PlatformTransactionManager commonTm,
                           @Qualifier("tenantTransactionManager") PlatformTransactionManager tenantTm) {
         this.ordenCRUD = ordenCRUD;
         this.clienteCRUD = clienteCRUD;
         this.encabezadoFacturaCRUD = encabezadoFacturaCRUD;
         this.detalleFacturaCRUD = detalleFacturaCRUD;
+        this.cajaCRUD = cajaCRUD;
+        this.configAppCRUD = configAppCRUD;
+        this.impuestoCRUD = impuestoCRUD;
+        this.datosFacturaCRUD = datosFacturaCRUD;
+        this.accountsReceivableService = accountsReceivableService;
+        this.sellerCatalogService = sellerCatalogService;
         this.commonTx = new TransactionTemplate(commonTm);
         this.tenantTx = new TransactionTemplate(tenantTm);
     }
@@ -151,7 +177,222 @@ public class InvoiceService {
             throw e;
         }
 
+        // ---- (3) US-034: venta a credito -> generar saldo en CxC (BD comun) ----
+        if (orden.getTipoFactura() != null && orden.getTipoFactura() == 2) {
+            postCreditCxc(orden, savedHeader.getNumeroFactura(), tenant, user);
+        }
+
         return loadResponse(savedHeader.getNumeroFactura(), tenant);
+    }
+
+    /**
+     * Checkout POS — crea la factura DIRECTO desde el carrito (sin orden),
+     * fiel al Swing {@code FacturaDao.registrar} + {@code FacturacionService}:
+     * totales con precio-incluye-ISV (FacturacionCalculadora), encabezado +
+     * detalle en la caja (trigger del kardex) y, si es credito, saldo CxC.
+     */
+    public InvoiceResponse createDirect(InvoiceCreateRequest req, Principal principal) {
+        String tenant = requireTenant();
+        String user = principal != null ? principal.getName() : "SYSTEM";
+        boolean credito = req.tipoFactura() != null && req.tipoFactura() == 2;
+
+        // Resolver cliente (fiel al Swing): id valido -> ese; si no y hay nombre
+        // escrito -> registrar contado (tipo 1) al vuelo; si no -> Consumidor final.
+        Cliente cliente = resolveCustomer(req);
+        int customerId = cliente.getId();
+
+        // Credito: solo clientes gestionados (tipo 2). Contado/escritos (tipo 1) no.
+        if (credito && (cliente.getTipoCliente() == null || cliente.getTipoCliente() != 2)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "El credito solo aplica a clientes registrados (gestionados); "
+                    + "el cliente seleccionado es de contado.");
+        }
+
+        // % ISV por taxId (autoritativo, server-side)
+        Map<Integer, Integer> percentByTax = percentByTax();
+
+        // Totales fieles al Swing (precio incluye ISV) via modulo compartido
+        List<FacturacionCalculadora.LineaInput> calcLines = req.lines().stream()
+                .map(l -> new FacturacionCalculadora.LineaInput(
+                        l.cantidad(), l.precioUnitario(), nz(l.descuento()),
+                        percentByTax.getOrDefault(l.taxId(), 0), 0))
+                .collect(Collectors.toList());
+        FacturacionCalculadora.Totales tot = FacturacionCalculadora.calcularTotales(calcLines);
+
+        int codigoCaja = cajaCRUD.findByNombreDb(tenant).map(c -> c.getCodigo()).orElse(0);
+        int dueDays = creditDueDays();
+        // Vendedor: segun config_user_facturacion.ventana_vendedor (Swing). Default 1.
+        int codigoVendedor = sellerCatalogService.resolveVendedor(user, req.vendedorId());
+
+        EncabezadoFactura savedHeader = tenantTx.execute(status -> {
+            int codRango = datosFacturaCRUD.findTopByOrderByCodigoRangoDesc()
+                    .map(d -> d.getCodigoRango()).orElse(1);
+            EncabezadoFactura header = buildHeaderDirect(req, customerId, tot, user, credito, codRango, dueDays, codigoVendedor);
+            EncabezadoFactura sh = encabezadoFacturaCRUD.save(header);
+            for (InvoiceLineRequest l : req.lines()) {
+                detalleFacturaCRUD.save(buildLineDirect(l, sh.getNumeroFactura(),
+                        percentByTax.getOrDefault(l.taxId(), 0)));  // trigger kardex
+            }
+            return sh;
+        });
+
+        if (credito) {
+            try {
+                accountsReceivableService.postCreditSale(customerId, codigoCaja,
+                        savedHeader.getNumeroFactura(), tot.getTotal(),
+                        LocalDate.now().plusDays(dueDays), user);
+            } catch (RuntimeException e) {
+                log.error("POS: factura {} (caja={}, cliente={}) quedo SIN saldo CxC — reconciliar manualmente",
+                        savedHeader.getNumeroFactura(), codigoCaja, customerId, e);
+                throw e;
+            }
+        }
+
+        return loadResponse(savedHeader.getNumeroFactura(), tenant);
+    }
+
+    private static final int CLIENTE_CONSUMIDOR_FINAL = 1;
+    private static final int TIPO_CLIENTE_CONTADO = 1;
+
+    /**
+     * Resuelve el cliente de la factura (fiel al Swing {@code registrarClienteContado}):
+     * <ul>
+     *   <li>{@code customerId} válido (&gt;0) → ese cliente;</li>
+     *   <li>si no y hay {@code customerName} → registra un cliente de contado
+     *       (tipo 1) al vuelo y factura a él (no aparece en el admin);</li>
+     *   <li>si no → Consumidor final (id 1).</li>
+     * </ul>
+     */
+    private Cliente resolveCustomer(InvoiceCreateRequest req) {
+        Integer id = req.customerId();
+        if (id != null && id > 0) {
+            return clienteCRUD.findById(id)
+                    .orElseThrow(() -> new EntityNotFoundException("Cliente " + id + " no encontrado"));
+        }
+        String nombre = req.customerName() == null ? "" : req.customerName().trim();
+        if (nombre.isEmpty()) {
+            return clienteCRUD.findById(CLIENTE_CONSUMIDOR_FINAL)
+                    .orElseThrow(() -> new EntityNotFoundException("Consumidor final (id 1) no existe"));
+        }
+        Cliente nuevo = new Cliente();
+        nuevo.setNombre(nombre);
+        nuevo.setTipoCliente(TIPO_CLIENTE_CONTADO);
+        nuevo.setIdVendedor(1);
+        return commonTx.execute(s -> clienteCRUD.save(nuevo));
+    }
+
+    /** Mapa taxId -> porcentaje (int) desde el catalogo de impuestos. */
+    private Map<Integer, Integer> percentByTax() {
+        Map<Integer, Integer> map = new java.util.HashMap<>();
+        impuestoCRUD.findAll().forEach(i -> map.put(i.getId(), parsePercent(i.getPorcentaje())));
+        return map;
+    }
+
+    private static int parsePercent(String raw) {
+        if (raw == null || raw.isBlank()) return 0;
+        try {
+            return new BigDecimal(raw.trim()).intValue();
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private EncabezadoFactura buildHeaderDirect(InvoiceCreateRequest req,
+                                                int customerId,
+                                                FacturacionCalculadora.Totales tot,
+                                                String user, boolean credito,
+                                                int codRango, int dueDays, int codigoVendedor) {
+        EncabezadoFactura h = new EncabezadoFactura();
+        h.setFecha(LocalDateTime.now());
+        h.setSubtotalExcento(tot.getSubtotalExcento());
+        h.setSubtotal15(tot.getSubtotal15());
+        h.setSubtotal18(tot.getSubtotal18());
+        h.setSubtotal(tot.getSubtotal());
+        h.setImpuesto(tot.getImpuesto());
+        h.setIsv18(tot.getIsv18());
+        h.setIsvOtros(tot.getOtrosImpuestos());
+        h.setTotal(tot.getTotal());
+        h.setDescuento(tot.getDescuento());
+        h.setCodigoCliente(String.valueOf(customerId));
+        h.setCodigo("1");                   // mirror Swing (FacturaDao)
+        h.setEstadoFactura("ACT");
+        h.setUsuario(user);
+        h.setAgregaKardex(0);
+        h.setCodigoVendedor(codigoVendedor); // empleado/vendedor (config ventana_vendedor; default 1)
+        h.setCodRango(codRango);            // CAI activo de la caja
+        h.setTotalLetras("NA");
+        h.setObservacion(req.observacion() == null || req.observacion().isBlank()
+                ? "NA" : req.observacion());
+        h.setFechaVencimiento(LocalDate.now().plusDays(dueDays));
+        h.setTipoFactura(credito ? 2 : 1);
+        if (credito) {
+            h.setTipoPago(3);
+            h.setPago(BigDecimal.ZERO);
+            h.setEstadoPago(0);             // pendiente (Swing)
+            h.setCobroEfectivo(BigDecimal.ZERO);
+            h.setCobroTarjeta(BigDecimal.ZERO);
+        } else {
+            h.setTipoPago(req.tipoPago() != null ? req.tipoPago() : 1);
+            h.setPago(tot.getTotal());
+            h.setEstadoPago(1);             // pagada (Swing)
+            h.setCobroEfectivo(nz(req.cobroEfectivo()));
+            h.setCobroTarjeta(nz(req.cobroTarjeta()));
+        }
+        return h;
+    }
+
+    private DetalleFactura buildLineDirect(InvoiceLineRequest l, Integer numeroFactura, int percent) {
+        BigDecimal desc = nz(l.descuento()).setScale(2, BigDecimal.ROUND_HALF_EVEN);
+        BigDecimal totalItem = l.cantidad().multiply(l.precioUnitario()).subtract(desc);
+        BigDecimal porImp = new BigDecimal(percent).divide(new BigDecimal(100)).add(BigDecimal.ONE);
+        BigDecimal base = totalItem.divide(porImp, 2, BigDecimal.ROUND_HALF_EVEN);
+        BigDecimal impuesto = totalItem.subtract(base);
+
+        DetalleFactura d = new DetalleFactura();
+        d.setNumeroFactura(numeroFactura);
+        d.setCodigoArticulo(l.productId());
+        d.setPrecio(l.precioUnitario());
+        d.setCantidad(l.cantidad());
+        d.setImpuesto(impuesto.setScale(2, BigDecimal.ROUND_HALF_EVEN));
+        d.setSubtotal(base);
+        d.setDescuento(desc);
+        d.setTotal(totalItem.setScale(2, BigDecimal.ROUND_HALF_EVEN));
+        d.setCodigoBarra("NA");
+        d.setAgregaKardex(0);  // trigger lo cambia a 1
+        return d;
+    }
+
+    /**
+     * US-034: tras commitear la factura a credito en la caja, registra el saldo
+     * en las tablas CxC de la BD comun. Si falla, la factura ya esta commiteada
+     * (no hay XA): logueamos para reconciliacion manual y propagamos el error.
+     */
+    private void postCreditCxc(Orden orden, Integer numeroFactura, String tenant, String user) {
+        Integer customerId = orden.getClienteId();
+        if (customerId == null || customerId <= 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Una venta a credito requiere un cliente valido");
+        }
+        int codigoCaja = cajaCRUD.findByNombreDb(tenant).map(c -> c.getCodigo()).orElse(0);
+        LocalDate fechaVenc = LocalDate.now().plusDays(creditDueDays());
+        try {
+            accountsReceivableService.postCreditSale(
+                    customerId, codigoCaja, numeroFactura, nz(orden.getTotal()), fechaVenc, user);
+        } catch (RuntimeException e) {
+            log.error("US-034: factura {} (caja={}, cliente={}) quedo SIN saldo CxC — reconciliar manualmente",
+                    numeroFactura, codigoCaja, customerId, e);
+            throw e;
+        }
+    }
+
+    /** Dias de credito desde config_app; 0 si no hay config o falla la lectura. */
+    private int creditDueDays() {
+        try {
+            return configAppCRUD.findDiaVencimientoFactura().orElse(0);
+        } catch (RuntimeException e) {
+            log.warn("US-034: no se pudo leer config_app.dia_vencimiento_factura, usando 0: {}", e.getMessage());
+            return 0;
+        }
     }
 
     public InvoiceResponse getById(int invoiceId) {
@@ -199,21 +440,33 @@ public class InvoiceService {
         h.setIsvOtros(nz(orden.getIsvOtros()));
         h.setIsv18(nz(orden.getTotalImpuesto18()));
         h.setUsuario(user);
-        // Asumimos pago al contado: pago = total. tipo_factura/tipo_pago=1.
-        h.setPago(nz(orden.getTotal()));
         h.setDescuento(nz(orden.getTotalDescuento()));
-        h.setTipoFactura(1);
+        // US-034: tipo_factura 2 = credito (lo trae la orden); 1 = contado.
+        boolean credito = orden.getTipoFactura() != null && orden.getTipoFactura() == 2;
+        h.setTipoFactura(credito ? 2 : 1);
         h.setAgregaKardex(0);
         h.setTipoPago(1);
         h.setObservacion(orden.getObservacion() == null || orden.getObservacion().isBlank()
                 ? "NA" : orden.getObservacion());
         h.setTotalLetras("NA");             // NumberToLetter: mejora futura
         h.setCodigoVendedor(orden.getVendedorCod());
-        h.setEstadoPago(0);                 // pagada
         h.setCodRango(1);
         h.setCobroTarjeta(BigDecimal.ZERO);
-        h.setCobroEfectivo(nz(orden.getTotal()));
-        h.setFechaVencimiento(LocalDate.now());
+        if (credito) {
+            // venta a credito: nada cobrado al facturar; queda pendiente y con
+            // vencimiento = hoy + config_app.dia_vencimiento_factura.
+            // estado_pago semantica Swing: 0 = pendiente.
+            h.setPago(BigDecimal.ZERO);
+            h.setEstadoPago(0);             // pendiente de pago (Swing)
+            h.setCobroEfectivo(BigDecimal.ZERO);
+            h.setFechaVencimiento(LocalDate.now().plusDays(creditDueDays()));
+        } else {
+            // contado: pago = total. estado_pago semantica Swing: 1 = pagada.
+            h.setPago(nz(orden.getTotal()));
+            h.setEstadoPago(1);             // pagada (Swing)
+            h.setCobroEfectivo(nz(orden.getTotal()));
+            h.setFechaVencimiento(LocalDate.now());
+        }
         return h;
     }
 
