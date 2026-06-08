@@ -136,7 +136,10 @@ public class OrdenRepository implements OrderRepository {
         LocalDateTime finDelDia = hoy.atTime(23, 59, 59).atZone(hondurasZone)
                 .withZoneSameInstant(jvmZone)
                 .toLocalDateTime();
-        List<Orden> ordenes = (List<Orden>) ordenCRUD.findByFechaIsBetweenAndUsuarioOrderByFechaDesc(inicioDelDia, finDelDia,user);
+        // estado < 3 → solo pendientes (1=guardada, 2=actualizada); excluye las
+        // anuladas (estado 5, borrado lógico) y cualquier otro estado >= 3.
+        List<Orden> ordenes = ordenCRUD.findByFechaIsBetweenAndUsuarioAndEstadoLessThanOrderByFechaDesc(
+                inicioDelDia, finDelDia, user, 3);
 
         //se recorre las ordenes para cambiar los precios que puede cambiar el usuario
         for (Orden orden : ordenes) {
@@ -167,6 +170,16 @@ public class OrdenRepository implements OrderRepository {
 
     @Override
     public void delete(int orderId) {
+        // Borrado LÓGICO (estado 5 = anulada): NO se elimina la fila — conserva
+        // la traza, fiel al Swing. getByToday filtra estado<3, así que la orden
+        // anulada deja de aparecer en el listado.
+        ordenCRUD.updateEstado(orderId, 5);
+    }
+
+    @Override
+    public void deletePhysical(int orderId) {
+        // Borrado FÍSICO: elimina la fila (cascade borra los detalles). Lo usa
+        // la app de órdenes; el POS solo hace el lógico de arriba.
         ordenCRUD.deleteById(orderId);
     }
 

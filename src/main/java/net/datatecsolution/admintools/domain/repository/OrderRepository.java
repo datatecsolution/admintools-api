@@ -14,5 +14,9 @@ public interface OrderRepository {
 
     Optional<Order> getOrderUser(int orderId,String user);
 
+    /** Borrado lógico: marca la orden como anulada (estado 5), conserva la fila. */
     void delete(int orderId);
+
+    /** Borrado físico: elimina la fila (y sus detalles por cascade). Solo la app de órdenes. */
+    void deletePhysical(int orderId);
 }

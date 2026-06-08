@@ -57,11 +57,15 @@ public class OrderCtl {
 
     @DeleteMapping("/delete/{id}")
     @PreAuthorize("hasRole('SELLER')")   // US-021: el dueno de la orden la borra (vendedor o superior)
-    public ResponseEntity delete(@PathVariable("id") int orderId, java.security.Principal principal) {
-        // se tiene que enviar el usuario para verificar que la orden le pertenece
+    public ResponseEntity delete(@PathVariable("id") int orderId,
+                                 @RequestParam(name = "fisico", defaultValue = "false") boolean fisico,
+                                 java.security.Principal principal) {
+        // se tiene que enviar el usuario para verificar que la orden le pertenece.
+        // fisico=true (app de ordenes) elimina la fila; sin el flag (POS) anula
+        // logicamente (estado 5).
         String user = principal.getName();
 
-        if (orderService.delete(orderId, user)) {
+        if (orderService.delete(orderId, user, fisico)) {
             return new ResponseEntity(HttpStatus.OK);
         } else {
             return new ResponseEntity(HttpStatus.NOT_FOUND);
