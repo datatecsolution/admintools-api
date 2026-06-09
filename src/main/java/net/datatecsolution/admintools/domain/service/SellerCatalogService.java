@@ -34,13 +34,18 @@ public class SellerCatalogService {
                 configUserFacturacionCRUD.findVentanaObservaciones(user).orElse(0) == 1;
         boolean descuentoEnPorcentaje =
                 configUserFacturacionCRUD.findDescuentoPorcentaje(user).orElse(0) == 1;
+        boolean pwdPrecio =
+                configUserFacturacionCRUD.findPwdPrecio(user).orElse(0) == 1;
+        boolean pwdDescuento =
+                configUserFacturacionCRUD.findPwdDescuento(user).orElse(0) == 1;
         List<SellerResponse> sellers = empleadoCRUD.findAll().stream()
                 .map(e -> new SellerResponse(
                         e.getCodigo(),
                         (e.getNombre() + " " + e.getApellido()).trim()))
                 .toList();
         return new SellerSettingsResponse(
-                isVentanaVendedor(user), ventanaObservaciones, descuentoEnPorcentaje, sellers);
+                isVentanaVendedor(user), ventanaObservaciones, descuentoEnPorcentaje,
+                pwdPrecio, pwdDescuento, sellers);
     }
 
     /**

@@ -26,4 +26,14 @@ public interface ConfigUserFacturacionCRUD extends JpaRepository<ConfigUserFactu
     @Query(value = "SELECT descuento_porcentaje FROM config_user_facturacion WHERE usuario = :usuario LIMIT 1",
             nativeQuery = true)
     Optional<Integer> findDescuentoPorcentaje(@Param("usuario") String usuario);
+
+    /** ¿"Precios" pide contraseña de admin? (1=sí). isPwdPrecio del Swing. */
+    @Query(value = "SELECT pwd_precio FROM config_user_facturacion WHERE usuario = :usuario LIMIT 1",
+            nativeQuery = true)
+    Optional<Integer> findPwdPrecio(@Param("usuario") String usuario);
+
+    /** ¿"Descuentos" pide contraseña de admin? (1=sí). isPwdDescuento del Swing. */
+    @Query(value = "SELECT pwd_descuento FROM config_user_facturacion WHERE usuario = :usuario LIMIT 1",
+            nativeQuery = true)
+    Optional<Integer> findPwdDescuento(@Param("usuario") String usuario);
 }
