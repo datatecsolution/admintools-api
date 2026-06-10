@@ -248,7 +248,38 @@ public class InvoiceService {
             }
         }
 
+        // Si el ticket vino de una orden recuperada, marcarla facturada (estado 3)
+        // para que salga de pendientes. Va DESPUES de la factura (espejo del Swing,
+        // que registra y luego remata la temp): si la marca falla, la factura ya
+        // existe — solo se loggea para reconciliar, no se revierte.
+        if (req.orderId() != null) {
+            markOrderInvoiced(req.orderId(), user, savedHeader.getNumeroFactura());
+        }
+
         return loadResponse(savedHeader.getNumeroFactura(), tenant);
+    }
+
+    /** Marca la orden recuperada como facturada (1..2 -> 3), con visibilidad del usuario. */
+    private void markOrderInvoiced(int orderId, String user, Integer numeroFactura) {
+        try {
+            commonTx.executeWithoutResult(s2 -> {
+                Orden o = ordenCRUD.findByIdFacturaVisible(orderId, user);
+                if (o == null) {
+                    log.warn("POS: factura {} referenciaba orden {} no visible/inexistente para {} — sin marcar",
+                            numeroFactura, orderId, user);
+                } else if (o.getEstado() != null && o.getEstado() >= 3) {
+                    log.warn("POS: orden {} ya estaba en estado {} al facturar {} — sin cambios",
+                            orderId, o.getEstado(), numeroFactura);
+                } else {
+                    o.setEstado(3);
+                    ordenCRUD.save(o);
+                    log.info("POS: orden {} marcada facturada (estado 3) por factura {}", orderId, numeroFactura);
+                }
+            });
+        } catch (RuntimeException e) {
+            log.error("POS: factura {} creada pero la orden {} quedo pendiente — reconciliar manualmente",
+                    numeroFactura, orderId, e);
+        }
     }
 
     private static final int CLIENTE_CONSUMIDOR_FINAL = 1;
