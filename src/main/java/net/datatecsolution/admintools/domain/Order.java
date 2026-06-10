@@ -1,10 +1,12 @@
 package net.datatecsolution.admintools.domain;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
@@ -144,6 +146,24 @@ public class Order {
         return date != null ? date.format(formatter) : null;
     }
 
+    @JsonIgnore
+    public LocalDateTime getDateTime() {
+        return dateTime;
+    }
+
+    public void setDateTime(LocalDateTime dateTime) {
+        this.dateTime = dateTime;
+    }
+
+    /**
+     * Hora de la orden ("HH:mm") para las listas del POS. Campo aditivo:
+     * {@code date} sigue siendo el string largo que consume la app de pedidos.
+     */
+    @JsonProperty("time")
+    public String getFormattedTime() {
+        return dateTime != null ? dateTime.format(DateTimeFormatter.ofPattern("HH:mm")) : null;
+    }
+
     public String getObser() {
         return obser;
     }
@@ -157,6 +177,8 @@ public class Order {
     private Integer orderId;
    // @JsonFormat(pattern = "EEEE d, MMMM", locale = "es_HN")
     private LocalDate date;
+    /** fecha completa (con hora) del encabezado; expuesta como "time". */
+    private LocalDateTime dateTime;
     private BigDecimal subTotalExcento;
     private BigDecimal subTotal15;
     private BigDecimal subTotal18;

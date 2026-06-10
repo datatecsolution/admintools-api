@@ -15,6 +15,7 @@ public interface OrderMapper {
     @Mappings({
             @Mapping(source = "idFactura", target = "orderId"),
             @Mapping(source = "fecha", target = "date"),
+            @Mapping(source = "fecha", target = "dateTime"),
             @Mapping(source = "subTotalExcento", target = "subTotalExcento"),
             @Mapping(source = "total", target = "total"),
             @Mapping(source = "clienteId", target = "customerId"),
@@ -32,7 +33,10 @@ public interface OrderMapper {
     @InheritInverseConfiguration
     @Mappings({
             @Mapping(target = "vendedor", ignore = true),
-            @Mapping(target = "cliente", ignore = true)
+            @Mapping(target = "cliente", ignore = true),
+            // fecha se conserva desde date (comportamiento previo); dateTime es
+            // solo de salida (hora "time" para las listas del POS).
+            @Mapping(target = "fecha", source = "date")
 
     })
     Orden toOrden(Order order);
