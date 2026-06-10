@@ -45,7 +45,12 @@ public class SellerCatalogService {
                 .toList();
         return new SellerSettingsResponse(
                 isVentanaVendedor(user), ventanaObservaciones, descuentoEnPorcentaje,
-                pwdPrecio, pwdDescuento, sellers);
+                pwdPrecio, pwdDescuento, puedeCrearClienteCredito(user), sellers);
+    }
+
+    /** V30: el cajero puede crear clientes de crédito (tipo 2) desde el POS. */
+    public boolean puedeCrearClienteCredito(String user) {
+        return configUserFacturacionCRUD.findCrearClienteCredito(user).orElse(0) == 1;
     }
 
     /**

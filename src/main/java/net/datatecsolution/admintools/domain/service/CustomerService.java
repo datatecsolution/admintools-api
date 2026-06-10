@@ -35,6 +35,9 @@ public class CustomerService {
     @Autowired
     private SellerService sellerService;
 
+    @Autowired
+    private SellerCatalogService sellerCatalogService;
+
     public List<Customer> getdAll() {
         return customerRepository.getAll();
     }
@@ -56,10 +59,38 @@ public class CustomerService {
     }
 
     // US-019: crea un cliente asociado al vendedor autenticado.
-    public CustomerResponse create(CustomerCreateRequest request, String user) {
-        Seller seller = resolveSeller(user);
+    // tipoCliente null = legacy del panel admin (tipo 2, solo ADMIN);
+    // 1 = contado (alta rápida POS); 2 = crédito (form completo, gated por
+    // config crear_cliente_credito o rol ADMIN).
+    public CustomerResponse create(CustomerCreateRequest request, String user, boolean isAdmin) {
+        Integer tipo = request.tipoCliente();
+        if (tipo != null && tipo != 1 && tipo != 2) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "tipoCliente debe ser 1 (contado) o 2 (crédito)");
+        }
+        if (tipo == null && !isAdmin) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Indique tipoCliente (1 contado / 2 crédito)");
+        }
+        if (tipo != null && tipo == 2) {
+            if (!isAdmin && !sellerCatalogService.puedeCrearClienteCredito(user)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Crear clientes de crédito está bloqueado para el cajero (configuración)");
+            }
+            if (request.phone() == null || request.phone().isBlank()
+                    || request.address() == null || request.address().isBlank()
+                    || request.limiteCredito() == null
+                    || request.limiteCredito().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "El cliente de crédito requiere teléfono, dirección y límite de crédito mayor que 0");
+            }
+        }
         Customer toCreate = customerMapper.fromCreateRequest(request);
-        Customer created = customerRepository.create(toCreate, seller.getId());
+        if (tipo != null && tipo == 1) toCreate.setLimiteCredito(java.math.BigDecimal.ZERO);
+        // Vendedor del usuario; si no hay empleado marcado (cajero POS), el
+        // default 1 — fiel a registrarClienteContado del Swing (id_vendedor=1).
+        int sellerId = sellerService.findByUser(user).map(Seller::getId).orElse(1);
+        Customer created = customerRepository.create(toCreate, sellerId);
         return customerMapper.toResponse(created);
     }
 

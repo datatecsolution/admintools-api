@@ -1,8 +1,11 @@
 package net.datatecsolution.admintools.domain.dto;
 
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+
+import java.math.BigDecimal;
 
 /**
  * DTO de entrada para crear/actualizar Cliente. No incluye id (lo genera la BD).
@@ -20,6 +23,17 @@ public record CustomerCreateRequest(
         String address,
 
         @Size(max = 20, message = "El telefono no puede exceder 20 caracteres")
-        String phone
+        String phone,
+
+        /**
+         * 1 = contado (alta rápida del POS) · 2 = crédito (formulario completo).
+         * null = comportamiento legacy del panel admin (tipo 2, solo ADMIN).
+         * El tipo 2 explícito exige teléfono/dirección/límite y el permiso
+         * crear_cliente_credito (o rol ADMIN).
+         */
+        Integer tipoCliente,
+
+        @DecimalMin(value = "0.00", message = "El límite de crédito no puede ser negativo")
+        BigDecimal limiteCredito
 ) {
 }

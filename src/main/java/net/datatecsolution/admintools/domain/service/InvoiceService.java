@@ -307,6 +307,8 @@ public class InvoiceService {
         }
         Cliente nuevo = new Cliente();
         nuevo.setNombre(nombre);
+        String rtn = req.customerRtn() == null ? "" : req.customerRtn().replaceAll("\\D", "");
+        if (!rtn.isEmpty()) nuevo.setRtn(rtn);
         nuevo.setTipoCliente(TIPO_CLIENTE_CONTADO);
         nuevo.setIdVendedor(1);
         return commonTx.execute(s -> clienteCRUD.save(nuevo));

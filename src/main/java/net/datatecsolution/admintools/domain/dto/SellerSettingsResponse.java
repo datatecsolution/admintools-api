@@ -16,6 +16,8 @@ public record SellerSettingsResponse(
         boolean descuentoEnPorcentaje,
         boolean pwdPrecio,
         boolean pwdDescuento,
+        /** true: el cajero puede crear clientes tipo 2 (crédito) desde el POS. */
+        boolean crearClienteCredito,
         List<SellerResponse> sellers
 ) {
 }
