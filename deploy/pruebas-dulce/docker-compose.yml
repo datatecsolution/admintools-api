@@ -65,6 +65,12 @@ services:
       - MYSQL_PORT=3306
     volumes:
       - api-pruebas-uploads:/app/uploads
+    # También en la red de npm: el proxy host de posdulce le pega por nombre
+    # (api-pruebas-dulce:8080). El firewall del host bloquea cross-bridge,
+    # así que forward por gateway/IP no funciona.
+    networks:
+      - default
+      - npm
 
   pos-pruebas:
     container_name: pos-pruebas-dulce
@@ -80,7 +86,18 @@ services:
       - api-pruebas
     ports:
       - "8090:80"
+    networks:
+      - default
+      - npm
 
 volumes:
   mysql-pruebas-data:
   api-pruebas-uploads:
+
+networks:
+  default: {}
+  # Red existente de npm (la crea el compose de n8n-docker). MySQL del stack
+  # NO se une: solo lo ven api/pos por la red default propia.
+  npm:
+    name: n8n-docker_default
+    external: true
