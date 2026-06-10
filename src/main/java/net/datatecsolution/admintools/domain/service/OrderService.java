@@ -56,6 +56,12 @@ public class OrderService {
         return orderRepository.save(order, user);
     }
 
+    /** Pendientes del usuario sin filtro de fecha (POS), paginado. */
+    public org.springframework.data.domain.Page<Order> findPendientes(String user,
+            org.springframework.data.domain.Pageable pageable) {
+        return orderRepository.getPendientes(user, pageable);
+    }
+
     public List<Order> findByToday(String user) {
         return orderRepository.getByToday(user);
     }
