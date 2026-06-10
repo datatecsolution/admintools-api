@@ -36,4 +36,8 @@ public interface ConfigUserFacturacionCRUD extends JpaRepository<ConfigUserFactu
     @Query(value = "SELECT pwd_descuento FROM config_user_facturacion WHERE usuario = :usuario LIMIT 1",
             nativeQuery = true)
     Optional<Integer> findPwdDescuento(@Param("usuario") String usuario);
+
+    @Query(value = "SELECT crear_cliente_credito FROM config_user_facturacion WHERE usuario = :usuario LIMIT 1",
+            nativeQuery = true)
+    Optional<Integer> findCrearClienteCredito(@Param("usuario") String usuario);
 }

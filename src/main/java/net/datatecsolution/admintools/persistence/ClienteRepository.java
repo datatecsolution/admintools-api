@@ -49,7 +49,17 @@ public class ClienteRepository implements CustomerRepository {
     public Customer create(Customer customer, int sellerId) {
         Cliente entity = mapper.toCliente(customer);
         entity.setIdVendedor(sellerId);
-        entity.setTipoCliente(2);   // gestionado: solo estos se listan/editan en admin y reciben crédito
+        // tipo explícito (POS: 1 contado / 2 crédito); null = legacy del panel
+        // admin -> 2 (gestionado). El gate de tipo 2 vive en CustomerService.
+        entity.setTipoCliente(customer.getTipoCliente() != null ? customer.getTipoCliente() : 2);
+        // OJO: limiteCredito ya viene mapeado por MapStruct; Cliente.setLimiteCredito
+        // SUMA (legacy) en vez de asignar, así que no debe llamarse dos veces.
+        // El mapper pisa los defaults de la entidad con null (columnas NOT NULL
+        // del esquema legacy): restaurar los del Swing.
+        if (entity.getDireccion() == null) entity.setDireccion("NA");
+        if (entity.getTelefono() == null) entity.setTelefono("NA");
+        if (entity.getRtn() == null) entity.setRtn("CF");
+        if (entity.getLimiteCredito() == null) entity.setLimiteCredito(java.math.BigDecimal.ZERO);
         return mapper.toCustomer(clienteCRUD.save(entity));
     }
 

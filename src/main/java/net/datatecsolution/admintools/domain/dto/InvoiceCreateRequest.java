@@ -20,6 +20,8 @@ import java.util.List;
 public record InvoiceCreateRequest(
         Integer customerId,
         String customerName,
+        /** RTN del cliente escrito (solo dígitos); se guarda al auto-crear el contado. */
+        String customerRtn,
         @NotNull Integer tipoFactura,
         Integer tipoPago,
         Integer vendedorId,

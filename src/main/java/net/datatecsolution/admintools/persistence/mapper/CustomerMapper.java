@@ -49,7 +49,7 @@ public interface CustomerMapper {
     // US-019: DTO de entrada -> domain POJO (id lo asigna la BD).
     @Mappings({
             @Mapping(target = "customerId",              ignore = true),
-            @Mapping(target = "tipoCliente",             ignore = true), // lo fija el repo (create -> 2)
+            @Mapping(source = "tipoCliente",             target = "tipoCliente"), // null -> el repo usa 2 (legacy)
             @Mapping(source = "name",                    target = "customerName"),
             @Mapping(source = "rtn",                     target = "customerRTN"),
             @Mapping(source = "address",                 target = "customerAdress"),

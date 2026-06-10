@@ -61,11 +61,16 @@ public class CustomerCtl {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")   // US-021
+    // El POS (cajero/vendedor) crea clientes contado; el tipo 2 (crédito) queda
+    // gated en el servicio por config crear_cliente_credito o rol ADMIN. El
+    // payload legacy del panel (sin tipoCliente) sigue siendo solo ADMIN.
+    @PreAuthorize("hasRole('SELLER')")
     @Operation(summary = "Crear un cliente para el vendedor autenticado")
     public ResponseEntity<CustomerResponse> create(@Valid @RequestBody CustomerCreateRequest request,
-                                                   Principal principal) {
-        CustomerResponse created = customerService.create(request, principal.getName());
+                                                   org.springframework.security.core.Authentication auth) {
+        boolean isAdmin = auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        CustomerResponse created = customerService.create(request, auth.getName(), isAdmin);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 

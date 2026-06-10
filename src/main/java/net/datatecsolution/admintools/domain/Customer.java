@@ -14,6 +14,15 @@ public class Customer {
     private String customerTelephoneNumber;
     /** 1 = contado/rápido (oculto en admin, sin crédito); 2 = gestionado. */
     private Integer tipoCliente;
+    private java.math.BigDecimal limiteCredito;
+
+    public java.math.BigDecimal getLimiteCredito() {
+        return limiteCredito;
+    }
+
+    public void setLimiteCredito(java.math.BigDecimal limiteCredito) {
+        this.limiteCredito = limiteCredito;
+    }
 
     public Integer getTipoCliente() {
         return tipoCliente;
