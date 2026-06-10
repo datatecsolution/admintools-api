@@ -1,0 +1,86 @@
+# =====================================================================
+# Stack de PRUEBAS con datos reales del cliente "dulce" — server Ronal
+#
+# Tres contenedores, AISLADOS de la producción de Ronal (no tocan el
+# MySQL del host ni el admin-tools-api-v2 que sirve pedidos):
+#   - mysql-pruebas : MySQL 8.0 con el dump de dulce cargado al iniciar
+#                     (mysql-init/: 00-dump + 01-v30 + 02-usuario API)
+#   - api-pruebas   : admintools-api (perfil pdn) → puerto host 8084
+#   - pos-pruebas   : admintools-pos (nginx estático) → puerto host 8090
+#
+# Layout esperado en el server (ver README.md):
+#   /home/ronal/pruebas-dulce/
+#   ├── admintools-api/   (este repo, rama main)
+#   ├── admintools-pos/   (repo del POS, rama master)
+#   └── stack/            (= esta carpeta deploy/pruebas-dulce copiada,
+#                          con el dump en mysql-init/00-dulce.sql)
+#
+# Uso (desde stack/):
+#   cp .env.example .env && chmod 600 .env       # compose interpola ${VARS} desde .env
+#   docker compose up -d --build
+#   docker logs api-pruebas-dulce --tail 50
+# =====================================================================
+
+services:
+  mysql-pruebas:
+    image: mysql:8.0
+    container_name: mysql-pruebas-dulce
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${PRUEBAS_MYSQL_ROOT_PASSWORD}
+    command: >-
+      --character-set-server=utf8mb3
+      --collation-server=utf8mb3_general_ci
+      --log-bin-trust-function-creators=1
+    volumes:
+      # El dump (00) crea las 5 BDs; 01 aplica V30; 02 crea el usuario
+      # de la API. Solo corre la PRIMERA vez (volumen vacío).
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+      - mysql-pruebas-data:/var/lib/mysql
+    ports:
+      # Solo loopback del server, para inspección por SSH. No exponer a la red.
+      - "127.0.0.1:3307:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${PRUEBAS_MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  api-pruebas:
+    container_name: api-pruebas-dulce
+    build:
+      context: ../admintools-api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mysql-pruebas:
+        condition: service_healthy
+    ports:
+      - "8084:8080"
+    env_file:
+      - .env
+    environment:
+      - SPRING_PROFILES_ACTIVE=pdn
+      - MYSQL_HOST=mysql-pruebas
+      - MYSQL_PORT=3306
+    volumes:
+      - api-pruebas-uploads:/app/uploads
+
+  pos-pruebas:
+    container_name: pos-pruebas-dulce
+    build:
+      context: ../admintools-pos
+      dockerfile: Dockerfile
+      args:
+        # El bundle del POS llama a la API DESDE EL NAVEGADOR del tester:
+        # esta URL debe ser alcanzable desde fuera del server (IP o dominio).
+        VITE_API_BASE_URL: ${POS_API_URL:-http://10.10.0.1:8084/admin_tools/api}
+    restart: unless-stopped
+    depends_on:
+      - api-pruebas
+    ports:
+      - "8090:80"
+
+volumes:
+  mysql-pruebas-data:
+  api-pruebas-uploads:
