@@ -142,19 +142,28 @@ public class OrdenRepository implements OrderRepository {
         // 2=actualizada); excluye anuladas (5) y cualquier estado >= 3.
         List<Orden> ordenes = ordenCRUD.findPendientesDelDiaVisibles(
                 inicioDelDia, finDelDia, user, 3);
+        aplicarPreciosUsuario(ordenes, user);
+        return mapper.toOrders(ordenes);
+    }
 
-        //se recorre las ordenes para cambiar los precios que puede cambiar el usuario
+    @Override
+    public org.springframework.data.domain.Page<Order> getPendientes(String user,
+            org.springframework.data.domain.Pageable pageable) {
+        // Semántica Swing (FacturaOrdenVentaDao): estado < 3 + visibilidad por
+        // usuario, SIN filtro de fecha, por número desc. La paginación
+        // reemplaza el LIMIT 0,20 fijo del Swing.
+        org.springframework.data.domain.Page<Orden> page =
+                ordenCRUD.findPendientesVisibles(user, 3, pageable);
+        aplicarPreciosUsuario(page.getContent(), user);
+        return page.map(mapper::toOrder);
+    }
+
+    /** Reemplaza los precios de cada línea por los que puede aplicar el usuario. */
+    private void aplicarPreciosUsuario(List<Orden> ordenes, String user) {
         for (Orden orden : ordenes) {
             for (DetalleOrden detalleOrden : orden.getDetalles()) {
-
-                List<PrecioArticulo> precios = new ArrayList<>();
-
-                //se buscan los precios que puede aplicar el usuario
-                precios = preciosArticuloCRUD.findPrecioUser(detalleOrden.getCodigoArt(), user);
-
-                //se establece los precios
-
-                //si los precios existen se aplican al articulo
+                List<PrecioArticulo> precios =
+                        preciosArticuloCRUD.findPrecioUser(detalleOrden.getCodigoArt(), user);
                 if (precios != null) {
                     detalleOrden.getArticulo().setPrecioArticulos(precios);
                 } else {
@@ -163,7 +172,6 @@ public class OrdenRepository implements OrderRepository {
                 }
             }
         }
-        return mapper.toOrders(ordenes);
     }
     @Override
     public Optional<Order> getOrderUser(int orderId, String user){

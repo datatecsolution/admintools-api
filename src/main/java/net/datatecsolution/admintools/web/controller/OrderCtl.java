@@ -49,6 +49,23 @@ public class OrderCtl {
         }
     }
 
+    /**
+     * Órdenes pendientes del usuario SIN filtro de fecha — lo usa la Lista de
+     * órdenes del POS (semántica del Swing: estado < 3 + visibilidad, por
+     * número desc). /today (con fecha) queda para la app de pedidos.
+     */
+    @GetMapping("/pending")
+    public ResponseEntity<org.springframework.data.domain.Page<Order>> getPending(
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "50") int size,
+            java.security.Principal principal) {
+        String user = principal.getName();
+        return new ResponseEntity<>(
+                orderService.findPendientes(user,
+                        org.springframework.data.domain.PageRequest.of(page, Math.min(size, 200))),
+                HttpStatus.OK);
+    }
+
     @GetMapping("/today")
     public ResponseEntity<List<Order>> getByNow(java.security.Principal principal) {
         String user = principal.getName();

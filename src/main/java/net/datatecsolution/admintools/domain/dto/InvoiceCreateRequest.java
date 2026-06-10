@@ -26,6 +26,14 @@ public record InvoiceCreateRequest(
         BigDecimal cobroEfectivo,
         BigDecimal cobroTarjeta,
         String observacion,
+        /**
+         * Si el ticket vino de una orden recuperada: al facturar se marca esa
+         * orden como facturada (estado 3) y sale de pendientes — espejo del
+         * Swing, que factura lo que está en pantalla y luego remata la orden
+         * temporal. Se factura el carrito enviado (puede venir modificado),
+         * NO el contenido guardado de la orden.
+         */
+        Integer orderId,
         @NotEmpty(message = "la factura debe tener al menos una línea")
         @Valid
         List<InvoiceLineRequest> lines
