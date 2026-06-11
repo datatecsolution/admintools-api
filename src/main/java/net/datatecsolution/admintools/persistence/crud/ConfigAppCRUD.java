@@ -22,15 +22,22 @@ public interface ConfigAppCRUD extends JpaRepository<ConfigApp, Integer> {
     @Query(value = "SELECT interes_para_facturas_venc FROM config_app LIMIT 1", nativeQuery = true)
     Optional<Integer> findInteresFacturasVenc();
 
+    /** V31 — ventana (dias) del ranking de mas vendidos en facturacion. */
+    @Query(value = "SELECT dias_ranking_mas_vendidos FROM config_app LIMIT 1", nativeQuery = true)
+    Optional<Integer> findDiasRankingMasVendidos();
+
     /** US-031 — actualiza la (unica) fila de config. Devuelve filas afectadas. */
     @Modifying
     @Query(value = "UPDATE config_app SET dia_vencimiento_factura = :dias, " +
-            " interes_para_facturas_venc = :interes", nativeQuery = true)
-    int updateConfig(@Param("dias") int dias, @Param("interes") int interes);
+            " interes_para_facturas_venc = :interes, " +
+            " dias_ranking_mas_vendidos = :diasRanking", nativeQuery = true)
+    int updateConfig(@Param("dias") int dias, @Param("interes") int interes,
+                     @Param("diasRanking") int diasRanking);
 
     /** US-031 — inserta la fila inicial si la tabla esta vacia. */
     @Modifying
-    @Query(value = "INSERT INTO config_app (dia_vencimiento_factura, interes_para_facturas_venc) " +
-            " VALUES (:dias, :interes)", nativeQuery = true)
-    int insertConfig(@Param("dias") int dias, @Param("interes") int interes);
+    @Query(value = "INSERT INTO config_app (dia_vencimiento_factura, interes_para_facturas_venc, "
+            + "dias_ranking_mas_vendidos) VALUES (:dias, :interes, :diasRanking)", nativeQuery = true)
+    int insertConfig(@Param("dias") int dias, @Param("interes") int interes,
+                     @Param("diasRanking") int diasRanking);
 }

@@ -25,6 +25,9 @@ public class ConfigApp {
     @Column(name = "interes_para_facturas_venc")
     private Integer interesParaFacturasVenc;
 
+    @Column(name = "dias_ranking_mas_vendidos")
+    private Integer diasRankingMasVendidos;
+
     public Integer getDiaVencimientoFactura() {
         return diaVencimientoFactura;
     }
@@ -39,5 +42,13 @@ public class ConfigApp {
 
     public void setInteresParaFacturasVenc(Integer interesParaFacturasVenc) {
         this.interesParaFacturasVenc = interesParaFacturasVenc;
+    }
+
+    public Integer getDiasRankingMasVendidos() {
+        return diasRankingMasVendidos;
+    }
+
+    public void setDiasRankingMasVendidos(Integer diasRankingMasVendidos) {
+        this.diasRankingMasVendidos = diasRankingMasVendidos;
     }
 }

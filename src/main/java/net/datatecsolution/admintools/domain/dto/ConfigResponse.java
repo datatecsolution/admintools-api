@@ -5,6 +5,7 @@ package net.datatecsolution.admintools.domain.dto;
  */
 public record ConfigResponse(
         Integer diaVencimientoFactura,
-        Integer interesParaFacturasVenc
+        Integer interesParaFacturasVenc,
+        Integer diasRankingMasVendidos
 ) {
 }

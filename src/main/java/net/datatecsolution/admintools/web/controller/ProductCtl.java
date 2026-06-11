@@ -16,6 +16,20 @@ public class ProductCtl {
     @Autowired
     private ProductService productService;
 
+    @Autowired
+    private net.datatecsolution.admintools.domain.service.SalesRankingService salesRankingService;
+
+    /**
+     * US-094 — Ranking de ventas de la caja actual para ordenar el catálogo:
+     * categorías por unidades vendidas + top de productos ("Más vendidos").
+     * Ventana en días configurable (config_app); {@code days} la sobreescribe.
+     */
+    @GetMapping("/sales-ranking")
+    public ResponseEntity<net.datatecsolution.admintools.domain.dto.SalesRankingResponse> salesRanking(
+            @RequestParam(name = "days", required = false) Integer days) {
+        return ResponseEntity.ok(salesRankingService.ranking(days));
+    }
+
     // @GetMapping("/all")
     // public ResponseEntity<List<Product>> getAll() {
     //
