@@ -4,13 +4,14 @@ import java.util.List;
 
 /**
  * Ranking de ventas para ordenar el catálogo de facturación (US-094):
- * categorías ordenadas por unidades vendidas en la ventana configurada y el
- * top de productos más vendidos (para el chip "Más vendidos"). Listas vacías
- * si la caja no tiene ventas en la ventana (degradación limpia en el POS).
+ * categorías y productos ordenados por unidades vendidas en la ventana
+ * configurada. El POS ordena los chips por {@code categoryIdsByRank} y, dentro
+ * de cada categoría, sube los más vendidos según {@code productIdsByRank}.
+ * Listas vacías si la caja no tiene ventas en la ventana (degradación limpia).
  */
 public record SalesRankingResponse(
         List<Integer> categoryIdsByRank,
-        List<Integer> topProductIds,
+        List<Integer> productIdsByRank,
         int days
 ) {
 }
