@@ -19,19 +19,31 @@ public class ConfigService {
         this.crud = crud;
     }
 
+    /** Ventana por defecto del ranking de mas vendidos si la config no la trae. */
+    public static final int DEFAULT_DIAS_RANKING = 30;
+
     public ConfigResponse getConfig() {
         return new ConfigResponse(
                 crud.findDiaVencimientoFactura().orElse(0),
-                crud.findInteresFacturasVenc().orElse(0));
+                crud.findInteresFacturasVenc().orElse(0),
+                crud.findDiasRankingMasVendidos().orElse(DEFAULT_DIAS_RANKING));
+    }
+
+    /** Solo la ventana del ranking (para SalesRankingService). */
+    public int getDiasRankingMasVendidos() {
+        return crud.findDiasRankingMasVendidos().orElse(DEFAULT_DIAS_RANKING);
     }
 
     @Transactional
     public ConfigResponse updateConfig(ConfigRequest req) {
-        int rows = crud.updateConfig(req.diaVencimientoFactura(), req.interesParaFacturasVenc());
+        int rows = crud.updateConfig(req.diaVencimientoFactura(), req.interesParaFacturasVenc(),
+                req.diasRankingMasVendidos());
         if (rows == 0) {
             // tabla vacia (single-row aun no inicializada)
-            crud.insertConfig(req.diaVencimientoFactura(), req.interesParaFacturasVenc());
+            crud.insertConfig(req.diaVencimientoFactura(), req.interesParaFacturasVenc(),
+                    req.diasRankingMasVendidos());
         }
-        return new ConfigResponse(req.diaVencimientoFactura(), req.interesParaFacturasVenc());
+        return new ConfigResponse(req.diaVencimientoFactura(), req.interesParaFacturasVenc(),
+                req.diasRankingMasVendidos());
     }
 }

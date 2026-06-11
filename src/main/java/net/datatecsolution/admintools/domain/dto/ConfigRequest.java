@@ -1,6 +1,7 @@
 package net.datatecsolution.admintools.domain.dto;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 
 /**
@@ -12,6 +13,9 @@ public record ConfigRequest(
         Integer diaVencimientoFactura,
         @NotNull(message = "interesParaFacturasVenc es obligatorio")
         @PositiveOrZero(message = "interesParaFacturasVenc no puede ser negativo")
-        Integer interesParaFacturasVenc
+        Integer interesParaFacturasVenc,
+        @NotNull(message = "diasRankingMasVendidos es obligatorio")
+        @Positive(message = "diasRankingMasVendidos debe ser mayor que 0")
+        Integer diasRankingMasVendidos
 ) {
 }
