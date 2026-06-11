@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
  * Ranking de ventas para ordenar el catálogo de facturación (US-094). Suma las
  * unidades vendidas por producto en la ventana configurada (config_app.
  * dias_ranking_mas_vendidos) sobre la BD de la caja actual (TenantContext) y
- * deriva el orden de categorías + el top de productos.
+ * deriva el orden de categorías y de productos.
  *
  * Cross-DB como el cierre: detalle/encabezado en {@code <caja>} y la categoría
  * en {@code admin_tools.articulo}. Se cachea por caja+ventana ~1 h porque el
@@ -28,7 +28,6 @@ import java.util.regex.Pattern;
 public class SalesRankingService {
 
     private static final Logger log = LoggerFactory.getLogger(SalesRankingService.class);
-    private static final int TOP_PRODUCTS = 30;
     private static final long TTL_MS = 60 * 60 * 1000L; // 1 h
     // El nombre de la BD viene de la tabla cajas; aun así se valida antes de
     // concatenarlo en el SQL (defensa en profundidad).
@@ -71,17 +70,18 @@ public class SalesRankingService {
                 + "JOIN admin_tools.articulo a ON a.codigo_articulo = d.codigo_articulo "
                 + "WHERE e.fecha >= (NOW() - INTERVAL ? DAY) AND e.estado_factura = 'ACT' ";
         try {
-            // Top productos por unidades (para el chip "Más vendidos").
-            List<Integer> topProducts = jdbc.query(
+            // Todos los productos vendidos, por unidades desc: el POS sube los
+            // más vendidos dentro de cada categoría.
+            List<Integer> products = jdbc.query(
                     "SELECT d.codigo_articulo AS pid, SUM(d.cantidad) AS u " + base
-                            + "GROUP BY d.codigo_articulo ORDER BY u DESC LIMIT " + TOP_PRODUCTS,
+                            + "GROUP BY d.codigo_articulo ORDER BY u DESC",
                     (rs, i) -> rs.getInt("pid"), days);
             // Categorías por unidades vendidas.
             List<Integer> categories = jdbc.query(
                     "SELECT a.codigo_marca AS cat, SUM(d.cantidad) AS u " + base
                             + "GROUP BY a.codigo_marca ORDER BY u DESC",
                     (rs, i) -> rs.getInt("cat"), days);
-            return new SalesRankingResponse(categories, topProducts, days);
+            return new SalesRankingResponse(categories, products, days);
         } catch (RuntimeException e) {
             log.warn("Ranking de ventas falló para caja {} ({} días): {}", caja, days, e.getMessage());
             return new SalesRankingResponse(List.of(), List.of(), days);
