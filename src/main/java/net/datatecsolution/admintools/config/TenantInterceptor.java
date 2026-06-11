@@ -66,28 +66,48 @@ public class TenantInterceptor implements HandlerInterceptor {
     }
 
     /**
-     * usuario.codigo_caja → cajas.nombre_db. Cero al login (admin/tecnico)
-     * devuelve null = sin caja.
+     * Resuelve el {@code nombre_db} de la caja del usuario. Modelo multi-caja
+     * (Sprint 4.5): la asignación vive en {@code cajas_usuarios} con una marcada
+     * {@code por_defecto=1}. La columna legacy {@code usuario.codigo_caja} solo
+     * se usa como fallback para usuarios no migrados (clientes donde quedó en 0
+     * mientras la asignación real está en cajas_usuarios, p. ej. dulce).
+     * Devuelve null si el usuario no tiene caja por ninguna vía.
      */
     private String resolveTenantForUser(String username) {
-        String sql = """
+        // Primario: caja por defecto en cajas_usuarios (modelo multi-caja).
+        String byCajasUsuarios = """
+                SELECT c.nombre_db
+                  FROM cajas_usuarios cu
+                  JOIN cajas c ON c.codigo = cu.codigo_caja
+                 WHERE cu.usuario = ?
+                 ORDER BY cu.por_defecto DESC, cu.codigo_caja ASC
+                 LIMIT 1
+                """;
+        // Fallback: columna legacy usuario.codigo_caja (> 0).
+        String byUsuario = """
                 SELECT c.nombre_db
                   FROM usuario u
                   JOIN cajas c ON c.codigo = u.codigo_caja
                  WHERE u.usuario = ? AND u.codigo_caja > 0
                  LIMIT 1
                 """;
-        try (var conn = commonDataSource.getConnection();
-             var ps = conn.prepareStatement(sql)) {
-            ps.setString(1, username);
-            try (var rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getString(1);
-                }
-            }
+        try (var conn = commonDataSource.getConnection()) {
+            String tenant = queryNombreDb(conn, byCajasUsuarios, username);
+            if (tenant == null) tenant = queryNombreDb(conn, byUsuario, username);
+            return tenant;
         } catch (Exception e) {
             log.warn("Error resolviendo caja para usuario {}: {}", username, e.getMessage());
+            return null;
         }
-        return null;
+    }
+
+    private String queryNombreDb(java.sql.Connection conn, String sql, String username)
+            throws java.sql.SQLException {
+        try (var ps = conn.prepareStatement(sql)) {
+            ps.setString(1, username);
+            try (var rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString(1) : null;
+            }
+        }
     }
 }
