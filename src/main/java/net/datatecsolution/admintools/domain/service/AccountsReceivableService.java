@@ -11,6 +11,7 @@ import net.datatecsolution.admintools.persistence.crud.ClienteCRUD;
 import net.datatecsolution.admintools.persistence.crud.CuentaFacturaCRUD;
 import net.datatecsolution.admintools.persistence.crud.CuentaPorCobrarCRUD;
 import net.datatecsolution.admintools.persistence.crud.CuentaPorCobrarFacturaCRUD;
+import net.datatecsolution.admintools.persistence.crud.InvoiceAccountView;
 import net.datatecsolution.admintools.persistence.crud.ReciboPagoCRUD;
 import net.datatecsolution.admintools.persistence.entity.Cliente;
 import net.datatecsolution.admintools.persistence.entity.CuentaFactura;
@@ -150,7 +151,7 @@ public class AccountsReceivableService {
             recibo.setTotalLetras("NA");
             ReciboPago saved = reciboPagoCRUD.save(recibo);
 
-            // movimiento debito en el libro del cliente (mirror reguistrarDebito)
+            // movimiento debito en el libro mayor del cliente (mirror reguistrarDebito)
             CuentaPorCobrar movimiento = new CuentaPorCobrar();
             movimiento.setFecha(LocalDate.now());
             movimiento.setCodigoCliente(cliente.getId());
@@ -159,6 +160,38 @@ public class AccountsReceivableService {
             movimiento.setDebito(monto);
             movimiento.setSaldo(nuevoSaldo);
             cuentaPorCobrarCRUD.save(movimiento);
+
+            // Distribucion por factura, antigua-primero (mirror de
+            // CtlCobro.registraPagoAfactura del Swing): cada factura con saldo
+            // absorbe hasta su saldo y el resto pasa a la siguiente. Por cada
+            // una se escribe un movimiento en cuentas_por_cobrar_facturas
+            // (tipo_movimiento=2 = pago). Sin esto el saldo por factura nunca
+            // baja y la factura sigue apareciendo como pendiente.
+            // Orden antigua-primero por codigo_cuenta (orden de creacion de la
+            // factura, como el Swing). NO por dias del ultimo pago: ese valor
+            // se resetea al pagar y desordenaria la distribucion.
+            java.util.List<InvoiceAccountView> facturas = cuentaFacturaCRUD
+                    .findInvoiceAccountsByCustomer(customerId).stream()
+                    .filter(v -> v.getSaldo() != null && v.getSaldo().signum() > 0)
+                    .sorted(java.util.Comparator.comparingInt(InvoiceAccountView::getCodigoCuenta))
+                    .toList();
+            BigDecimal resto = monto;
+            for (InvoiceAccountView f : facturas) {
+                if (resto.signum() <= 0) break;
+                BigDecimal saldoFactura = scale(f.getSaldo());
+                BigDecimal pago = scale(saldoFactura.min(resto));
+                resto = scale(resto.subtract(pago));
+                CuentaPorCobrarFactura movFactura = new CuentaPorCobrarFactura();
+                movFactura.setCodigoCuenta(f.getCodigoCuenta());
+                movFactura.setFecha(LocalDate.now());
+                movFactura.setDescripcion("Pago con recibo # " + saved.getNoRecibo());
+                movFactura.setDebito(pago);
+                movFactura.setCredito(BigDecimal.ZERO);
+                movFactura.setSaldo(scale(saldoFactura.subtract(pago)));
+                movFactura.setUsuario(user == null ? "SYSTEM" : user);
+                movFactura.setTipoMovimiento(2);
+                cuentaPorCobrarFacturaCRUD.save(movFactura);
+            }
 
             return toReceiptResponse(saved);
         });
