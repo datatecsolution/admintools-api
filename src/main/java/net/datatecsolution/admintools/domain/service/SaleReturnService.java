@@ -1,12 +1,17 @@
 package net.datatecsolution.admintools.domain.service;
 
 import net.datatecsolution.admintools.config.TenantContext;
+import net.datatecsolution.admintools.domain.dto.AnnulInvoiceRequest;
+import net.datatecsolution.admintools.domain.dto.AnnulInvoiceResponse;
+import net.datatecsolution.admintools.domain.dto.ReturnableInvoiceResponse;
 import net.datatecsolution.admintools.domain.dto.SaleReturnLineRequest;
 import net.datatecsolution.admintools.domain.dto.SaleReturnLineResponse;
 import net.datatecsolution.admintools.domain.dto.SaleReturnRequest;
 import net.datatecsolution.admintools.domain.dto.SaleReturnResponse;
 import net.datatecsolution.admintools.persistence.crud.DetalleDevolucionCRUD;
 import net.datatecsolution.admintools.persistence.entity.DetalleDevolucion;
+import net.datatecsolution.admintools.persistence.tenant.entity.DetalleFactura;
+import net.datatecsolution.admintools.persistence.tenant.entity.EncabezadoFactura;
 import net.datatecsolution.admintools.persistence.tenant.crud.DetalleFacturaCRUD;
 import net.datatecsolution.admintools.persistence.tenant.crud.EncabezadoFacturaCRUD;
 import org.slf4j.Logger;
@@ -55,6 +60,8 @@ public class SaleReturnService {
     private final DetalleDevolucionCRUD devolucionCRUD;
     private final EncabezadoFacturaCRUD encabezadoFacturaCRUD;
     private final DetalleFacturaCRUD detalleFacturaCRUD;
+    private final AdminAuthorizationService adminAuth;
+    private final AccountsReceivableService accountsReceivable;
     private final JdbcTemplate commonJdbc;
     private final TransactionTemplate commonTx;
     private final TransactionTemplate tenantTx;
@@ -62,12 +69,16 @@ public class SaleReturnService {
     public SaleReturnService(DetalleDevolucionCRUD devolucionCRUD,
                              EncabezadoFacturaCRUD encabezadoFacturaCRUD,
                              DetalleFacturaCRUD detalleFacturaCRUD,
+                             AdminAuthorizationService adminAuth,
+                             AccountsReceivableService accountsReceivable,
                              @Qualifier("commonDataSource") DataSource commonDS,
                              @Qualifier("transactionManager") PlatformTransactionManager commonTm,
                              @Qualifier("tenantTransactionManager") PlatformTransactionManager tenantTm) {
         this.devolucionCRUD = devolucionCRUD;
         this.encabezadoFacturaCRUD = encabezadoFacturaCRUD;
         this.detalleFacturaCRUD = detalleFacturaCRUD;
+        this.adminAuth = adminAuth;
+        this.accountsReceivable = accountsReceivable;
         this.commonJdbc = new JdbcTemplate(commonDS);
         this.commonTx = new TransactionTemplate(commonTm);
         this.tenantTx = new TransactionTemplate(tenantTm);
@@ -143,6 +154,173 @@ public class SaleReturnService {
                 today,
                 items.stream().map(SaleReturnLineResponse::total).reduce(BigDecimal.ZERO, BigDecimal::add),
                 items);
+    }
+
+    // ============================================================
+    //              US-041: anulación (parcial/total)
+    // ============================================================
+
+    /** Factura con sus líneas devolvibles (facturada − ya devuelta) para el modal. */
+    public ReturnableInvoiceResponse getReturnable(int invoiceNumber) {
+        String tenant = requireTenant();
+        Integer cajaCode = resolveCajaCode(tenant);
+        EncabezadoFactura header = tenantTx.execute(s ->
+                encabezadoFacturaCRUD.findById(invoiceNumber).orElse(null));
+        if (header == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Factura " + invoiceNumber + " no existe en caja " + tenant);
+        }
+        // Agregar líneas por artículo (precio y impuesto unitarios + cantidad).
+        List<DetalleFactura> lineas = tenantTx.execute(s -> detalleFacturaCRUD.findByNumeroFactura(invoiceNumber));
+        java.util.Map<Integer, BigDecimal[]> porArticulo = new java.util.LinkedHashMap<>();
+        for (DetalleFactura d : lineas) {
+            // [precioUnit, impuestoTotal, cantidad]
+            BigDecimal[] acc = porArticulo.computeIfAbsent(d.getCodigoArticulo(),
+                    k -> new BigDecimal[]{d.getPrecio(), BigDecimal.ZERO, BigDecimal.ZERO});
+            acc[1] = acc[1].add(nz(d.getImpuesto()));
+            acc[2] = acc[2].add(nz(d.getCantidad()));
+        }
+        java.util.Map<Integer, String> nombres = nombresArticulos(porArticulo.keySet());
+        List<ReturnableInvoiceResponse.ReturnableLine> out = new ArrayList<>();
+        for (var e : porArticulo.entrySet()) {
+            int art = e.getKey();
+            BigDecimal precio = e.getValue()[0];
+            BigDecimal facturada = e.getValue()[2];
+            BigDecimal impUnit = facturada.signum() > 0
+                    ? e.getValue()[1].divide(facturada, 6, java.math.RoundingMode.HALF_EVEN) : BigDecimal.ZERO;
+            BigDecimal devuelta = nz(devolucionCRUD.sumCantidadByFacturaCajaArticulo(invoiceNumber, cajaCode, art));
+            out.add(new ReturnableInvoiceResponse.ReturnableLine(
+                    art, nombres.getOrDefault(art, "Art. " + art), precio,
+                    impUnit.setScale(2, java.math.RoundingMode.HALF_EVEN),
+                    facturada, devuelta, facturada.subtract(devuelta)));
+        }
+        return new ReturnableInvoiceResponse(invoiceNumber, cajaCode,
+                header.getEstadoFactura(), header.getTipoFactura(), nz(header.getTotal()), out);
+    }
+
+    /** Anula la factura: devuelve mercadería (kardex) y, si es total + crédito, reversa CxC. */
+    public AnnulInvoiceResponse annul(int invoiceNumber, AnnulInvoiceRequest req, Principal principal) {
+        if (!adminAuth.verifyAdminPassword(req.supervisorPassword())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Clave de supervisor inválida");
+        }
+        String tenant = requireTenant();
+        Integer cajaCode = resolveCajaCode(tenant);
+        String user = principal != null ? principal.getName() : "SYSTEM";
+
+        EncabezadoFactura header = tenantTx.execute(s ->
+                encabezadoFacturaCRUD.findById(invoiceNumber).orElse(null));
+        if (header == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Factura " + invoiceNumber + " no existe en caja " + tenant);
+        }
+        if ("NULA".equalsIgnoreCase(header.getEstadoFactura())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La factura ya está anulada");
+        }
+
+        // Precio/impuesto unitario por artículo (para construir las devoluciones).
+        List<DetalleFactura> detalle = tenantTx.execute(s -> detalleFacturaCRUD.findByNumeroFactura(invoiceNumber));
+        java.util.Map<Integer, BigDecimal[]> info = new java.util.LinkedHashMap<>();
+        for (DetalleFactura d : detalle) {
+            BigDecimal[] acc = info.computeIfAbsent(d.getCodigoArticulo(),
+                    k -> new BigDecimal[]{d.getPrecio(), BigDecimal.ZERO, BigDecimal.ZERO});
+            acc[1] = acc[1].add(nz(d.getImpuesto()));
+            acc[2] = acc[2].add(nz(d.getCantidad()));
+        }
+
+        // Determinar qué líneas/cantidades devolver.
+        List<SaleReturnLineRequest> aDevolver = new ArrayList<>();
+        if (req.total()) {
+            // Todo lo que falte por devolver de cada artículo.
+            for (var e : info.entrySet()) {
+                int art = e.getKey();
+                BigDecimal facturada = e.getValue()[2];
+                BigDecimal devuelta = nz(devolucionCRUD.sumCantidadByFacturaCajaArticulo(invoiceNumber, cajaCode, art));
+                BigDecimal resto = facturada.subtract(devuelta);
+                if (resto.signum() > 0) aDevolver.add(lineaDevolucion(art, resto, e.getValue()));
+            }
+        } else {
+            if (req.lineas() == null || req.lineas().isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "Anulación parcial sin líneas");
+            }
+            for (AnnulInvoiceRequest.AnnulLine l : req.lineas()) {
+                BigDecimal[] meta = info.get(l.codigoArticulo());
+                if (meta == null) {
+                    throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                            "El artículo " + l.codigoArticulo() + " no está en la factura");
+                }
+                BigDecimal devuelta = nz(devolucionCRUD.sumCantidadByFacturaCajaArticulo(invoiceNumber, cajaCode, l.codigoArticulo()));
+                BigDecimal disponible = meta[2].subtract(devuelta);
+                if (l.cantidad().signum() <= 0 || l.cantidad().compareTo(disponible) > 0) {
+                    throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                            "Artículo " + l.codigoArticulo() + ": cantidad inválida (disponible " + disponible + ")");
+                }
+                aDevolver.add(lineaDevolucion(l.codigoArticulo(), l.cantidad(), meta));
+            }
+        }
+
+        // (1) Registrar devoluciones (commonTx) → trigger reversa kardex.
+        LocalDate today = LocalDate.now();
+        BigDecimal totalDevuelto = BigDecimal.ZERO;
+        if (!aDevolver.isEmpty()) {
+            List<DetalleDevolucion> saved = commonTx.execute(s -> {
+                List<DetalleDevolucion> rows = new ArrayList<>();
+                for (SaleReturnLineRequest l : aDevolver) {
+                    rows.add(devolucionCRUD.save(buildDevolucion(l, invoiceNumber, cajaCode, today)));
+                }
+                return rows;
+            });
+            totalDevuelto = sumTotal(saved);
+        }
+
+        // (2) Solo en TOTAL: estado NULA + motivo, y reverso CxC si es crédito.
+        boolean cxcReversada = false;
+        BigDecimal abonoCxc = BigDecimal.ZERO;
+        String estadoFinal = header.getEstadoFactura();
+        if (req.total()) {
+            tenantTx.executeWithoutResult(s -> {
+                EncabezadoFactura h = encabezadoFacturaCRUD.findById(invoiceNumber).orElseThrow();
+                h.setEstadoFactura("NULA");
+                h.setObservacion(("ANULADA: " + req.motivo().trim() + " — por " + user));
+                encabezadoFacturaCRUD.save(h);
+            });
+            estadoFinal = "NULA";
+            if (header.getTipoFactura() != null && header.getTipoFactura() == 2) {
+                int customerId = parseClienteId(header.getCodigoCliente());
+                if (customerId > 0) {
+                    abonoCxc = accountsReceivable.reverseCreditInvoice(customerId, cajaCode, invoiceNumber, user);
+                    cxcReversada = abonoCxc.signum() > 0;
+                }
+            }
+        }
+
+        log.info("Anulación factura {} caja {} user {} total={} devuelto={} cxc={}",
+                invoiceNumber, cajaCode, user, req.total(), totalDevuelto, abonoCxc);
+        return new AnnulInvoiceResponse(invoiceNumber, req.total(), estadoFinal,
+                totalDevuelto, cxcReversada, abonoCxc);
+    }
+
+    private SaleReturnLineRequest lineaDevolucion(int articulo, BigDecimal cantidad, BigDecimal[] meta) {
+        BigDecimal precio = meta[0];
+        BigDecimal facturada = meta[2];
+        BigDecimal impUnit = facturada.signum() > 0
+                ? meta[1].divide(facturada, 6, java.math.RoundingMode.HALF_EVEN) : BigDecimal.ZERO;
+        BigDecimal impuesto = impUnit.multiply(cantidad).setScale(2, java.math.RoundingMode.HALF_EVEN);
+        return new SaleReturnLineRequest(articulo, cantidad, precio, impuesto, BigDecimal.ZERO, null, null);
+    }
+
+    private java.util.Map<Integer, String> nombresArticulos(java.util.Set<Integer> codigos) {
+        if (codigos.isEmpty()) return java.util.Map.of();
+        String in = codigos.stream().map(String::valueOf).collect(Collectors.joining(","));
+        java.util.Map<Integer, String> m = new java.util.HashMap<>();
+        commonJdbc.query("SELECT codigo_articulo, articulo FROM articulo WHERE codigo_articulo IN (" + in + ")",
+                rs -> { m.put(rs.getInt(1), rs.getString(2)); });
+        return m;
+    }
+
+    private static int parseClienteId(String codigo) {
+        try { return codigo == null ? 0 : Integer.parseInt(codigo.trim()); }
+        catch (NumberFormatException e) { return 0; }
     }
 
     // ============================================================

@@ -5,6 +5,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import net.datatecsolution.admintools.domain.dto.SaleReturnLineResponse;
 import net.datatecsolution.admintools.domain.dto.SaleReturnRequest;
+import net.datatecsolution.admintools.domain.dto.AnnulInvoiceResponse;
+import net.datatecsolution.admintools.domain.dto.AnnulInvoiceRequest;
+import net.datatecsolution.admintools.domain.dto.ReturnableInvoiceResponse;
 import net.datatecsolution.admintools.domain.dto.SaleReturnResponse;
 import net.datatecsolution.admintools.domain.service.SaleReturnService;
 import org.springframework.data.domain.Page;
@@ -73,5 +76,23 @@ public class SaleReturnCtl {
     @Operation(summary = "Listar todas las devoluciones agrupadas de una factura especifica")
     public ResponseEntity<SaleReturnResponse> findByInvoice(@PathVariable int invoiceNumber) {
         return ResponseEntity.ok(service.findByInvoice(invoiceNumber));
+    }
+
+    // ---- US-041: anulación (parcial/total) con autorización de supervisor ----
+
+    @GetMapping("/returnable/{invoiceNumber}")
+    @PreAuthorize("hasAnyRole('ADMIN','INVENTORY')")
+    @Operation(summary = "Factura con líneas devolvibles (facturada − ya devuelta) para el modal de anulación")
+    public ResponseEntity<ReturnableInvoiceResponse> returnable(@PathVariable int invoiceNumber) {
+        return ResponseEntity.ok(service.getReturnable(invoiceNumber));
+    }
+
+    @PostMapping("/annul/{invoiceNumber}")
+    @PreAuthorize("hasAnyRole('ADMIN','INVENTORY')")
+    @Operation(summary = "Anular factura (parcial/total): devuelve al kardex y, si es total+crédito, reversa CxC")
+    public ResponseEntity<AnnulInvoiceResponse> annul(@PathVariable int invoiceNumber,
+                                                      @Valid @RequestBody AnnulInvoiceRequest request,
+                                                      Principal principal) {
+        return ResponseEntity.ok(service.annul(invoiceNumber, request, principal));
     }
 }
