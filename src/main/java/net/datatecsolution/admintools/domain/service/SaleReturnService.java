@@ -62,6 +62,7 @@ public class SaleReturnService {
     private final DetalleFacturaCRUD detalleFacturaCRUD;
     private final AdminAuthorizationService adminAuth;
     private final AccountsReceivableService accountsReceivable;
+    private final net.datatecsolution.admintools.persistence.crud.CajaCRUD cajaCRUD;
     private final JdbcTemplate commonJdbc;
     private final TransactionTemplate commonTx;
     private final TransactionTemplate tenantTx;
@@ -71,6 +72,7 @@ public class SaleReturnService {
                              DetalleFacturaCRUD detalleFacturaCRUD,
                              AdminAuthorizationService adminAuth,
                              AccountsReceivableService accountsReceivable,
+                             net.datatecsolution.admintools.persistence.crud.CajaCRUD cajaCRUD,
                              @Qualifier("commonDataSource") DataSource commonDS,
                              @Qualifier("transactionManager") PlatformTransactionManager commonTm,
                              @Qualifier("tenantTransactionManager") PlatformTransactionManager tenantTm) {
@@ -79,9 +81,27 @@ public class SaleReturnService {
         this.detalleFacturaCRUD = detalleFacturaCRUD;
         this.adminAuth = adminAuth;
         this.accountsReceivable = accountsReceivable;
+        this.cajaCRUD = cajaCRUD;
         this.commonJdbc = new JdbcTemplate(commonDS);
         this.commonTx = new TransactionTemplate(commonTm);
         this.tenantTx = new TransactionTemplate(tenantTm);
+    }
+
+    /**
+     * Resuelve la caja a usar: si viene {@code cajaParam} (admin/supervisor que
+     * eligió una caja en la sección Facturas), fija el TenantContext a esa caja
+     * para que el EMF de tenant consulte su BD y devuelve su código. Si no, usa
+     * el tenant del usuario (cajero con caja asignada).
+     */
+    private Integer resolveCaja(Integer cajaParam) {
+        if (cajaParam != null) {
+            String db = cajaCRUD.findById(cajaParam)
+                    .map(c -> c.getNombreDb())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Caja no encontrada"));
+            TenantContext.setTenant(db);
+            return cajaParam;
+        }
+        return resolveCajaCode(requireTenant());
     }
 
     // ============================================================
@@ -161,14 +181,13 @@ public class SaleReturnService {
     // ============================================================
 
     /** Factura con sus líneas devolvibles (facturada − ya devuelta) para el modal. */
-    public ReturnableInvoiceResponse getReturnable(int invoiceNumber) {
-        String tenant = requireTenant();
-        Integer cajaCode = resolveCajaCode(tenant);
+    public ReturnableInvoiceResponse getReturnable(int invoiceNumber, Integer cajaParam) {
+        Integer cajaCode = resolveCaja(cajaParam);
         EncabezadoFactura header = tenantTx.execute(s ->
                 encabezadoFacturaCRUD.findById(invoiceNumber).orElse(null));
         if (header == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Factura " + invoiceNumber + " no existe en caja " + tenant);
+                    "Factura " + invoiceNumber + " no existe en la caja " + cajaCode);
         }
         // Agregar líneas por artículo (precio y impuesto unitarios + cantidad).
         List<DetalleFactura> lineas = tenantTx.execute(s -> detalleFacturaCRUD.findByNumeroFactura(invoiceNumber));
@@ -199,19 +218,18 @@ public class SaleReturnService {
     }
 
     /** Anula la factura: devuelve mercadería (kardex) y, si es total + crédito, reversa CxC. */
-    public AnnulInvoiceResponse annul(int invoiceNumber, AnnulInvoiceRequest req, Principal principal) {
+    public AnnulInvoiceResponse annul(int invoiceNumber, Integer cajaParam, AnnulInvoiceRequest req, Principal principal) {
         if (!adminAuth.verifyAdminPassword(req.supervisorPassword())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Clave de supervisor inválida");
         }
-        String tenant = requireTenant();
-        Integer cajaCode = resolveCajaCode(tenant);
+        Integer cajaCode = resolveCaja(cajaParam);
         String user = principal != null ? principal.getName() : "SYSTEM";
 
         EncabezadoFactura header = tenantTx.execute(s ->
                 encabezadoFacturaCRUD.findById(invoiceNumber).orElse(null));
         if (header == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Factura " + invoiceNumber + " no existe en caja " + tenant);
+                    "Factura " + invoiceNumber + " no existe en la caja " + cajaCode);
         }
         if ("NULA".equalsIgnoreCase(header.getEstadoFactura())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "La factura ya está anulada");
