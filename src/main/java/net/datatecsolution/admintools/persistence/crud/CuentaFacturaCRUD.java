@@ -7,6 +7,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
+import java.util.Optional;
+
 import java.util.List;
 
 /**
@@ -66,4 +69,11 @@ public interface CuentaFacturaCRUD extends JpaRepository<CuentaFactura, Integer>
             "   AND IFNULL(f_no_dias_del_ultimo_pago(cf.codigo_cuenta), 0) >= :minDays",
             nativeQuery = true)
     Page<DelinquentInvoiceView> findDelinquent(@Param("minDays") int minDays, Pageable pageable);
+
+    /** US-041 — cuenta de una factura (para reversar CxC al anular). */
+    Optional<CuentaFactura> findFirstByNoFacturaAndCodigoCaja(Integer noFactura, Integer codigoCaja);
+
+    /** Saldo actual de la factura en CxC (f_saldo_factura_cliente). */
+    @Query(value = "SELECT IFNULL(f_saldo_factura_cliente(:codigoCuenta), 0.00)", nativeQuery = true)
+    BigDecimal saldoFactura(@Param("codigoCuenta") int codigoCuenta);
 }

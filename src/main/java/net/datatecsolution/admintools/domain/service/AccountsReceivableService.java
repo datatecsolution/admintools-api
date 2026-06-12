@@ -197,6 +197,67 @@ public class AccountsReceivableService {
         });
     }
 
+    /**
+     * US-041 — reversa la CxC de una factura a crédito anulada (mirror de
+     * {@code createCreditoToCliente} del Swing). Abona el saldo REAL de la
+     * factura (no el total: si hubo pagos parciales, no sobre-abona):
+     *   1) pone el saldo de la factura (cuentas_por_cobrar_facturas) en 0;
+     *   2) abona ese mismo saldo al libro mayor del cliente (recibo + débito).
+     * Devuelve el monto abonado (0 si la factura no tenía cuenta/saldo).
+     * Corre en su propia transacción común.
+     */
+    public BigDecimal reverseCreditInvoice(int customerId, int codigoCaja, int noFactura, String user) {
+        return commonTx.execute(status -> {
+            var cuentaOpt = cuentaFacturaCRUD.findFirstByNoFacturaAndCodigoCaja(noFactura, codigoCaja);
+            if (cuentaOpt.isEmpty()) return BigDecimal.ZERO;
+            int codigoCuenta = cuentaOpt.get().getCodigoCuenta();
+            BigDecimal saldoFactura = scale(cuentaFacturaCRUD.saldoFactura(codigoCuenta));
+            if (saldoFactura.signum() <= 0) return BigDecimal.ZERO;
+
+            String concepto = "Anulación de factura # " + noFactura;
+            String usuario = user == null ? "SYSTEM" : user;
+
+            // 1) saldo de la factura -> 0 (cuentas_por_cobrar_facturas)
+            CuentaPorCobrarFactura movFactura = new CuentaPorCobrarFactura();
+            movFactura.setCodigoCuenta(codigoCuenta);
+            movFactura.setFecha(LocalDate.now());
+            movFactura.setDescripcion(concepto);
+            movFactura.setDebito(saldoFactura);
+            movFactura.setCredito(BigDecimal.ZERO);
+            movFactura.setSaldo(BigDecimal.ZERO);
+            movFactura.setUsuario(usuario);
+            movFactura.setTipoMovimiento(2);
+            cuentaPorCobrarFacturaCRUD.save(movFactura);
+
+            // 2) abono al libro mayor del cliente por el saldo real (recibo + débito)
+            BigDecimal saldoAnterior = currentSaldo(customerId);
+            BigDecimal nuevoSaldo = scale(saldoAnterior.subtract(saldoFactura));
+
+            ReciboPago recibo = new ReciboPago();
+            recibo.setFecha(LocalDateTime.now());
+            recibo.setCodigoCliente(customerId);
+            recibo.setTotal(saldoFactura);
+            recibo.setConcepto(concepto);
+            recibo.setUsuario(usuario);
+            recibo.setSaldoAnterior(saldoAnterior);
+            recibo.setSaldo(nuevoSaldo);
+            recibo.setRef("ANULACION");
+            recibo.setTotalLetras("NA");
+            ReciboPago saved = reciboPagoCRUD.save(recibo);
+
+            CuentaPorCobrar mov = new CuentaPorCobrar();
+            mov.setFecha(LocalDate.now());
+            mov.setCodigoCliente(customerId);
+            mov.setDescripcion(concepto + " con recibo no. " + saved.getNoRecibo());
+            mov.setCredito(BigDecimal.ZERO);
+            mov.setDebito(saldoFactura);
+            mov.setSaldo(nuevoSaldo);
+            cuentaPorCobrarCRUD.save(mov);
+
+            return saldoFactura;
+        });
+    }
+
     // ============================================================
     //              US-034: integracion venta a credito
     // ============================================================
