@@ -83,16 +83,19 @@ public class SaleReturnCtl {
     @GetMapping("/returnable/{invoiceNumber}")
     @PreAuthorize("hasAnyRole('ADMIN','INVENTORY')")
     @Operation(summary = "Factura con líneas devolvibles (facturada − ya devuelta) para el modal de anulación")
-    public ResponseEntity<ReturnableInvoiceResponse> returnable(@PathVariable int invoiceNumber) {
-        return ResponseEntity.ok(service.getReturnable(invoiceNumber));
+    public ResponseEntity<ReturnableInvoiceResponse> returnable(
+            @PathVariable int invoiceNumber,
+            @RequestParam(name = "caja", required = false) Integer caja) {
+        return ResponseEntity.ok(service.getReturnable(invoiceNumber, caja));
     }
 
     @PostMapping("/annul/{invoiceNumber}")
     @PreAuthorize("hasAnyRole('ADMIN','INVENTORY')")
     @Operation(summary = "Anular factura (parcial/total): devuelve al kardex y, si es total+crédito, reversa CxC")
     public ResponseEntity<AnnulInvoiceResponse> annul(@PathVariable int invoiceNumber,
+                                                      @RequestParam(name = "caja", required = false) Integer caja,
                                                       @Valid @RequestBody AnnulInvoiceRequest request,
                                                       Principal principal) {
-        return ResponseEntity.ok(service.annul(invoiceNumber, request, principal));
+        return ResponseEntity.ok(service.annul(invoiceNumber, caja, request, principal));
     }
 }
