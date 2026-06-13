@@ -3,6 +3,7 @@ package net.datatecsolution.admintools.web.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import net.datatecsolution.admintools.domain.dto.InvoiceAdminDetailResponse;
 import net.datatecsolution.admintools.domain.dto.InvoiceCreateRequest;
 import net.datatecsolution.admintools.domain.dto.InvoiceListItem;
 import net.datatecsolution.admintools.domain.dto.InvoiceResponse;
@@ -65,6 +66,20 @@ public class InvoiceCtl {
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(adminQuery.list(caja, search, from, to, estado, PageRequest.of(page, size)));
+    }
+
+    /**
+     * US-041 — Detalle completo de una factura de una CAJA elegida, para el
+     * drawer de la sección Facturas: cliente/RTN, vendedor, cajero, totales e
+     * ítems con lo ya devuelto por línea. Cross-DB (no usa el tenant del JWT).
+     */
+    @GetMapping("/admin/{numero}")
+    @PreAuthorize("hasAnyRole('ADMIN','INVENTORY')")
+    @Operation(summary = "Detalle de una factura de una caja (panel admin)")
+    public ResponseEntity<InvoiceAdminDetailResponse> adminDetail(
+            @PathVariable int numero,
+            @RequestParam("caja") int caja) {
+        return ResponseEntity.ok(adminQuery.detail(caja, numero));
     }
 
     @PostMapping("/from-order/{orderId}")
