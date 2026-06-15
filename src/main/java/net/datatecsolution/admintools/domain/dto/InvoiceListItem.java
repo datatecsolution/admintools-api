@@ -10,6 +10,8 @@ public record InvoiceListItem(
         LocalDateTime fecha,
         String codigoCliente,
         String nombreCliente,
+        String rtn,
+        String nombreVendedor,
         BigDecimal total,
         String estadoFactura,
         Integer tipoFactura
