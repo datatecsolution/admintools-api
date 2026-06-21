@@ -21,6 +21,8 @@ public interface PurchaseMapper {
             @Mapping(source = "codigoBodega",                   target = "warehouseCode"),
             @Mapping(source = "fecha",                          target = "date"),
             @Mapping(source = "estadoFactura",                  target = "status"),
+            @Mapping(source = "tipoFactura",                    target = "invoiceType"),
+            @Mapping(source = "fechaVencimiento",               target = "dueDate"),
             @Mapping(source = "subtotal",                       target = "subtotal"),
             @Mapping(source = "impuesto",                       target = "tax"),
             @Mapping(source = "total",                          target = "total"),
@@ -33,6 +35,7 @@ public interface PurchaseMapper {
     @Mappings({
             @Mapping(source = "idDetalleCompra", target = "id"),
             @Mapping(source = "codigoArticulo",  target = "productId"),
+            @Mapping(target = "productName", ignore = true),
             @Mapping(source = "cantidad",        target = "quantity"),
             @Mapping(source = "precio",          target = "price"),
             @Mapping(source = "impuesto",        target = "tax"),

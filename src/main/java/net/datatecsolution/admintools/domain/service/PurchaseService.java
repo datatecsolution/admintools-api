@@ -2,6 +2,7 @@ package net.datatecsolution.admintools.domain.service;
 
 import jakarta.persistence.EntityNotFoundException;
 import net.datatecsolution.admintools.domain.dto.PurchaseLineRequest;
+import net.datatecsolution.admintools.domain.dto.PurchaseLineResponse;
 import net.datatecsolution.admintools.domain.dto.PurchaseRequest;
 import net.datatecsolution.admintools.domain.dto.PurchaseResponse;
 import net.datatecsolution.admintools.persistence.crud.ArticuloMasterCRUD;
@@ -23,6 +24,8 @@ import java.security.Principal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Crea y consulta compras (INV-5). El kardex y el balance materializado
@@ -126,7 +129,29 @@ public class PurchaseService {
                 .orElseThrow(() -> new EntityNotFoundException("Purchase " + id + " not found"));
         // forzar carga de lineas (lazy) — al estar dentro del @Transactional
         // implicito del request, JPA puede hacerlo aunque el getter sea LAZY.
-        header.setLineas(lineCrud.findByNumeroCompra(id));
-        return mapper.toResponse(header);
+        List<DetalleFacturaCompra> lineas = lineCrud.findByNumeroCompra(id);
+        header.setLineas(lineas);
+        return withProductNames(mapper.toResponse(header), lineas);
+    }
+
+    /**
+     * Enriquece las líneas de la respuesta con el nombre del artículo (la
+     * entidad de detalle solo guarda el código). Batch lookup para el drawer
+     * de detalle del POS; el record es inmutable, así que se reconstruye.
+     */
+    private PurchaseResponse withProductNames(PurchaseResponse resp, List<DetalleFacturaCompra> lineas) {
+        List<Integer> ids = lineas.stream().map(DetalleFacturaCompra::getCodigoArticulo).distinct().toList();
+        Map<Integer, String> names = productCrud.findAllById(ids).stream()
+                .collect(Collectors.toMap(a -> a.getCodigoArticulo(), a -> a.getArticulo(), (a, b) -> a));
+        List<PurchaseLineResponse> enriched = resp.lines().stream()
+                .map(l -> new PurchaseLineResponse(
+                        l.id(), l.productId(),
+                        names.getOrDefault(l.productId(), "Art. " + l.productId()),
+                        l.quantity(), l.price(), l.tax(), l.subtotal(), l.expirationDate()))
+                .toList();
+        return new PurchaseResponse(
+                resp.id(), resp.supplierId(), resp.supplierName(), resp.supplierInvoiceNumber(),
+                resp.warehouseCode(), resp.date(), resp.status(), resp.invoiceType(), resp.dueDate(),
+                resp.subtotal(), resp.tax(), resp.total(), resp.payment(), resp.user(), enriched);
     }
 }

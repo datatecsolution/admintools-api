@@ -12,6 +12,8 @@ public record PurchaseResponse(
         Integer warehouseCode,
         LocalDate date,
         String status,
+        Integer invoiceType,
+        LocalDate dueDate,
         BigDecimal subtotal,
         BigDecimal tax,
         BigDecimal total,
