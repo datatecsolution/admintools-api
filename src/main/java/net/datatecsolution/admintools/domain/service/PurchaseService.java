@@ -20,13 +20,16 @@ import net.datatecsolution.admintools.persistence.mapper.PurchaseMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import javax.sql.DataSource;
 import java.math.BigDecimal;
 import java.security.Principal;
 import java.time.LocalDate;
@@ -53,6 +56,14 @@ public class PurchaseService {
     @Autowired private ArticuloMasterCRUD productCrud;
     @Autowired private AdminAuthorizationService adminAuth;
     @Autowired private PurchaseMapper mapper;
+
+    /** JdbcTemplate sobre la BD común para los movimientos de cuentas_por_pagar
+     *  (réplica de CuentaPorPagarDao del Swing; participa en la @Transactional). */
+    private final JdbcTemplate cxpJdbc;
+
+    public PurchaseService(@Qualifier("commonDataSource") DataSource commonDS) {
+        this.cxpJdbc = new JdbcTemplate(commonDS);
+    }
 
     @Transactional
     public PurchaseResponse create(PurchaseRequest request, Principal principal) {
@@ -125,11 +136,49 @@ public class PurchaseService {
         }
         savedHeader.setLineas(savedLines);
 
+        // Compra a crédito: registra el crédito (deuda neta = total − abono inicial)
+        // en cuentas_por_pagar, subiendo el saldo del proveedor. Mirror de
+        // CuentaPorPagarDao.reguistrarCredito del Swing.
+        if (request.invoiceType() != null && request.invoiceType() == 2) {
+            BigDecimal abono = request.paymentAmount() != null ? request.paymentAmount() : BigDecimal.ZERO;
+            BigDecimal deuda = totalSum.subtract(abono).max(BigDecimal.ZERO);
+            if (deuda.signum() > 0) {
+                registrarCreditoProveedor(request.supplierId(), deuda, numeroCompra);
+            }
+        }
+
         // Hidratar manualmente el @ManyToOne proveedor (session cache no lo
         // recarga tras save). Asi supplierName aparece en la POST response.
         supplierCrud.findById(request.supplierId()).ifPresent(savedHeader::setProveedor);
         return mapper.toResponse(savedHeader);
     }
+
+    /** Sube el saldo del proveedor por una compra a crédito (cuentas_por_pagar). */
+    private void registrarCreditoProveedor(int supplierId, BigDecimal credito, int numeroCompra) {
+        BigDecimal saldoAnt = nz(cxpJdbc.queryForObject(
+                "SELECT ifnull(f_saldo_proveedor(?),0)", BigDecimal.class, supplierId));
+        BigDecimal nuevo = saldoAnt.add(credito);
+        cxpJdbc.update("INSERT INTO cuentas_por_pagar (fecha, codigo_proveedor, descripcion, credito, saldo) "
+                + "VALUES (now(),?,?,?,?)", supplierId, "Compra a crédito #" + numeroCompra, credito, nuevo);
+        log.info("CxP: crédito proveedor {} compra {} monto {} saldo {}->{}",
+                supplierId, numeroCompra, credito, saldoAnt, nuevo);
+    }
+
+    /** Baja el saldo del proveedor al anular una compra a crédito (no deja negativo). */
+    private BigDecimal reversarCreditoProveedor(int supplierId, BigDecimal deuda, int numeroCompra) {
+        BigDecimal saldoAnt = nz(cxpJdbc.queryForObject(
+                "SELECT ifnull(f_saldo_proveedor(?),0)", BigDecimal.class, supplierId));
+        BigDecimal monto = deuda.min(saldoAnt);
+        if (monto.signum() <= 0) return BigDecimal.ZERO;
+        BigDecimal nuevo = saldoAnt.subtract(monto);
+        cxpJdbc.update("INSERT INTO cuentas_por_pagar (fecha, codigo_proveedor, descripcion, debito, saldo) "
+                + "VALUES (now(),?,?,?,?)", supplierId, "Anulación compra #" + numeroCompra, monto, nuevo);
+        log.info("CxP: reversa proveedor {} compra {} monto {} saldo {}->{}",
+                supplierId, numeroCompra, monto, saldoAnt, nuevo);
+        return monto;
+    }
+
+    private static BigDecimal nz(BigDecimal v) { return v != null ? v : BigDecimal.ZERO; }
 
     public Page<PurchaseResponse> search(Integer supplier, LocalDate from, LocalDate to,
                                          int page, int size) {
@@ -189,15 +238,23 @@ public class PurchaseService {
         header.setEstadoFactura("NULA");
         headerCrud.save(header);
 
+        // Si es a crédito, reversa la cuenta por pagar del proveedor por la deuda
+        // pendiente de esta compra (total − abono inicial), mirror de
+        // createDebitoToProveedor del Swing.
         boolean credito = header.getTipoFactura() != null && header.getTipoFactura() == 2;
-        // TODO(CxP): si la compra es a crédito, reversar la cuenta por pagar del
-        //   proveedor (mirror de createDebitoToProveedor del Swing: débito en
-        //   cuentas_por_pagar / recibo_pago_proveedores). Pendiente — por ahora
-        //   solo se reversa el kardex y se marca NULA.
-        log.info("Anulación compra {} user {} motivo='{}' devuelto={} credito={}",
+        BigDecimal montoCxp = BigDecimal.ZERO;
+        if (credito) {
+            BigDecimal deuda = nz(header.getTotal()).subtract(nz(header.getPago())).max(BigDecimal.ZERO);
+            if (deuda.signum() > 0) {
+                montoCxp = reversarCreditoProveedor(header.getCodigoProveedor(), deuda, purchaseId);
+            }
+        }
+
+        log.info("Anulación compra {} user {} motivo='{}' devuelto={} credito={} cxpReversada={}",
                 purchaseId, principal != null ? principal.getName() : "SYSTEM",
-                req.motivo(), totalDevuelto, credito);
-        return new AnnulPurchaseResponse(purchaseId, "NULA", totalDevuelto, false, BigDecimal.ZERO);
+                req.motivo(), totalDevuelto, credito, montoCxp);
+        return new AnnulPurchaseResponse(purchaseId, "NULA", totalDevuelto,
+                montoCxp.signum() > 0, montoCxp);
     }
 
     /**
