@@ -79,7 +79,8 @@ public class PurchaseService {
         header.setTotal(totalSum);
         header.setCodigoProveedor(request.supplierId());
         header.setCodigo(request.invoiceCode() != null ? request.invoiceCode() : "NA");
-        header.setEstadoFactura("Activa");
+        // Consonancia con el Swing (FacturaCompraDao): ACT = activa, NULA = anulada.
+        header.setEstadoFactura("ACT");
         header.setIsv18(BigDecimal.ZERO);
         header.setUsuario(principal.getName());
         header.setPago(request.paymentAmount() != null ? request.paymentAmount() : BigDecimal.ZERO);
