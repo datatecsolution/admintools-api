@@ -3,6 +3,8 @@ package net.datatecsolution.admintools.web.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import net.datatecsolution.admintools.domain.dto.AnnulPurchaseRequest;
+import net.datatecsolution.admintools.domain.dto.AnnulPurchaseResponse;
 import net.datatecsolution.admintools.domain.dto.PurchaseRequest;
 import net.datatecsolution.admintools.domain.dto.PurchaseResponse;
 import net.datatecsolution.admintools.domain.service.PurchaseService;
@@ -66,5 +68,14 @@ public class PurchaseCtl {
     @Operation(summary = "Obtener una compra por id (header + lineas)")
     public ResponseEntity<PurchaseResponse> getById(@PathVariable int id) {
         return ResponseEntity.ok(service.getById(id));
+    }
+
+    @PostMapping("/{id}/annul")
+    @PreAuthorize("hasAnyRole('ADMIN','INVENTORY')")
+    @Operation(summary = "Anular totalmente una compra (clave de supervisor; baja el stock y marca NULA)")
+    public ResponseEntity<AnnulPurchaseResponse> annul(@PathVariable int id,
+                                                       @Valid @RequestBody AnnulPurchaseRequest request,
+                                                       Principal principal) {
+        return ResponseEntity.ok(service.annul(id, request, principal));
     }
 }

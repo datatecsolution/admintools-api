@@ -1,28 +1,42 @@
 package net.datatecsolution.admintools.domain.service;
 
 import jakarta.persistence.EntityNotFoundException;
+import net.datatecsolution.admintools.domain.dto.AnnulPurchaseRequest;
+import net.datatecsolution.admintools.domain.dto.AnnulPurchaseResponse;
 import net.datatecsolution.admintools.domain.dto.PurchaseLineRequest;
+import net.datatecsolution.admintools.domain.dto.PurchaseLineResponse;
 import net.datatecsolution.admintools.domain.dto.PurchaseRequest;
 import net.datatecsolution.admintools.domain.dto.PurchaseResponse;
 import net.datatecsolution.admintools.persistence.crud.ArticuloMasterCRUD;
 import net.datatecsolution.admintools.persistence.crud.BodegaCRUD;
+import net.datatecsolution.admintools.persistence.crud.DetalleDevolucionCompraCRUD;
 import net.datatecsolution.admintools.persistence.crud.DetalleFacturaCompraCRUD;
 import net.datatecsolution.admintools.persistence.crud.EncabezadoFacturaCompraCRUD;
 import net.datatecsolution.admintools.persistence.crud.ProveedorCRUD;
+import net.datatecsolution.admintools.persistence.entity.DetalleDevolucionCompra;
 import net.datatecsolution.admintools.persistence.entity.DetalleFacturaCompra;
 import net.datatecsolution.admintools.persistence.entity.EncabezadoFacturaCompra;
 import net.datatecsolution.admintools.persistence.mapper.PurchaseMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
+import javax.sql.DataSource;
 import java.math.BigDecimal;
 import java.security.Principal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Crea y consulta compras (INV-5). El kardex y el balance materializado
@@ -32,12 +46,24 @@ import java.util.List;
 @Service
 public class PurchaseService {
 
+    private static final Logger log = LoggerFactory.getLogger(PurchaseService.class);
+
     @Autowired private EncabezadoFacturaCompraCRUD headerCrud;
     @Autowired private DetalleFacturaCompraCRUD lineCrud;
+    @Autowired private DetalleDevolucionCompraCRUD returnCrud;
     @Autowired private ProveedorCRUD supplierCrud;
     @Autowired private BodegaCRUD warehouseCrud;
     @Autowired private ArticuloMasterCRUD productCrud;
+    @Autowired private AdminAuthorizationService adminAuth;
     @Autowired private PurchaseMapper mapper;
+
+    /** JdbcTemplate sobre la BD común para los movimientos de cuentas_por_pagar
+     *  (réplica de CuentaPorPagarDao del Swing; participa en la @Transactional). */
+    private final JdbcTemplate cxpJdbc;
+
+    public PurchaseService(@Qualifier("commonDataSource") DataSource commonDS) {
+        this.cxpJdbc = new JdbcTemplate(commonDS);
+    }
 
     @Transactional
     public PurchaseResponse create(PurchaseRequest request, Principal principal) {
@@ -76,7 +102,8 @@ public class PurchaseService {
         header.setTotal(totalSum);
         header.setCodigoProveedor(request.supplierId());
         header.setCodigo(request.invoiceCode() != null ? request.invoiceCode() : "NA");
-        header.setEstadoFactura("Activa");
+        // Consonancia con el Swing (FacturaCompraDao): ACT = activa, NULA = anulada.
+        header.setEstadoFactura("ACT");
         header.setIsv18(BigDecimal.ZERO);
         header.setUsuario(principal.getName());
         header.setPago(request.paymentAmount() != null ? request.paymentAmount() : BigDecimal.ZERO);
@@ -109,11 +136,49 @@ public class PurchaseService {
         }
         savedHeader.setLineas(savedLines);
 
+        // Compra a crédito: registra el crédito (deuda neta = total − abono inicial)
+        // en cuentas_por_pagar, subiendo el saldo del proveedor. Mirror de
+        // CuentaPorPagarDao.reguistrarCredito del Swing.
+        if (request.invoiceType() != null && request.invoiceType() == 2) {
+            BigDecimal abono = request.paymentAmount() != null ? request.paymentAmount() : BigDecimal.ZERO;
+            BigDecimal deuda = totalSum.subtract(abono).max(BigDecimal.ZERO);
+            if (deuda.signum() > 0) {
+                registrarCreditoProveedor(request.supplierId(), deuda, numeroCompra);
+            }
+        }
+
         // Hidratar manualmente el @ManyToOne proveedor (session cache no lo
         // recarga tras save). Asi supplierName aparece en la POST response.
         supplierCrud.findById(request.supplierId()).ifPresent(savedHeader::setProveedor);
         return mapper.toResponse(savedHeader);
     }
+
+    /** Sube el saldo del proveedor por una compra a crédito (cuentas_por_pagar). */
+    private void registrarCreditoProveedor(int supplierId, BigDecimal credito, int numeroCompra) {
+        BigDecimal saldoAnt = nz(cxpJdbc.queryForObject(
+                "SELECT ifnull(f_saldo_proveedor(?),0)", BigDecimal.class, supplierId));
+        BigDecimal nuevo = saldoAnt.add(credito);
+        cxpJdbc.update("INSERT INTO cuentas_por_pagar (fecha, codigo_proveedor, descripcion, credito, saldo) "
+                + "VALUES (now(),?,?,?,?)", supplierId, "Compra a crédito #" + numeroCompra, credito, nuevo);
+        log.info("CxP: crédito proveedor {} compra {} monto {} saldo {}->{}",
+                supplierId, numeroCompra, credito, saldoAnt, nuevo);
+    }
+
+    /** Baja el saldo del proveedor al anular una compra a crédito (no deja negativo). */
+    private BigDecimal reversarCreditoProveedor(int supplierId, BigDecimal deuda, int numeroCompra) {
+        BigDecimal saldoAnt = nz(cxpJdbc.queryForObject(
+                "SELECT ifnull(f_saldo_proveedor(?),0)", BigDecimal.class, supplierId));
+        BigDecimal monto = deuda.min(saldoAnt);
+        if (monto.signum() <= 0) return BigDecimal.ZERO;
+        BigDecimal nuevo = saldoAnt.subtract(monto);
+        cxpJdbc.update("INSERT INTO cuentas_por_pagar (fecha, codigo_proveedor, descripcion, debito, saldo) "
+                + "VALUES (now(),?,?,?,?)", supplierId, "Anulación compra #" + numeroCompra, monto, nuevo);
+        log.info("CxP: reversa proveedor {} compra {} monto {} saldo {}->{}",
+                supplierId, numeroCompra, monto, saldoAnt, nuevo);
+        return monto;
+    }
+
+    private static BigDecimal nz(BigDecimal v) { return v != null ? v : BigDecimal.ZERO; }
 
     public Page<PurchaseResponse> search(Integer supplier, LocalDate from, LocalDate to,
                                          int page, int size) {
@@ -126,7 +191,90 @@ public class PurchaseService {
                 .orElseThrow(() -> new EntityNotFoundException("Purchase " + id + " not found"));
         // forzar carga de lineas (lazy) — al estar dentro del @Transactional
         // implicito del request, JPA puede hacerlo aunque el getter sea LAZY.
-        header.setLineas(lineCrud.findByNumeroCompra(id));
-        return mapper.toResponse(header);
+        List<DetalleFacturaCompra> lineas = lineCrud.findByNumeroCompra(id);
+        header.setLineas(lineas);
+        return withProductNames(mapper.toResponse(header), lineas);
+    }
+
+    /**
+     * Anula TOTALMENTE una factura de compra (mirror de CtlFacturasCompra del
+     * Swing): valida la clave de supervisor, devuelve todas las líneas al kardex
+     * (cada insert en detalle_devoluciones_compra dispara crear_dev_compa_kardex,
+     * que BAJA el stock que la compra subió) y marca la compra NULA.
+     */
+    @Transactional
+    public AnnulPurchaseResponse annul(int purchaseId, AnnulPurchaseRequest req, Principal principal) {
+        if (!adminAuth.verifyAdminPassword(req.supervisorPassword())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Clave de supervisor inválida");
+        }
+        EncabezadoFacturaCompra header = headerCrud.findById(purchaseId)
+                .orElseThrow(() -> new EntityNotFoundException("Purchase " + purchaseId + " not found"));
+        if ("NULA".equalsIgnoreCase(header.getEstadoFactura())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "La compra ya está anulada");
+        }
+
+        // Devolver todas las líneas → trigger baja el stock que la compra subió.
+        List<DetalleFacturaCompra> lineas = lineCrud.findByNumeroCompra(purchaseId);
+        LocalDate hoy = LocalDate.now();
+        BigDecimal totalDevuelto = BigDecimal.ZERO;
+        for (DetalleFacturaCompra l : lineas) {
+            DetalleDevolucionCompra d = new DetalleDevolucionCompra();
+            d.setNumeroFactura(purchaseId);
+            d.setCodigoArticulo(l.getCodigoArticulo());
+            d.setPrecio(l.getPrecio());
+            d.setCantidad(l.getCantidad());
+            d.setImpuesto(l.getImpuesto() != null ? l.getImpuesto() : BigDecimal.ZERO);
+            d.setDescuento(BigDecimal.ZERO);
+            BigDecimal sub = l.getPrecio().multiply(l.getCantidad());
+            d.setSubtotal(sub);
+            d.setTotal(sub.add(d.getImpuesto()));
+            d.setFecha(hoy);
+            d.setAgregaKardex(0);   // el trigger lo pone a 1
+            d.setCodigoBodega(header.getCodigoBodega());
+            returnCrud.save(d);
+            totalDevuelto = totalDevuelto.add(d.getTotal());
+        }
+
+        header.setEstadoFactura("NULA");
+        headerCrud.save(header);
+
+        // Si es a crédito, reversa la cuenta por pagar del proveedor por la deuda
+        // pendiente de esta compra (total − abono inicial), mirror de
+        // createDebitoToProveedor del Swing.
+        boolean credito = header.getTipoFactura() != null && header.getTipoFactura() == 2;
+        BigDecimal montoCxp = BigDecimal.ZERO;
+        if (credito) {
+            BigDecimal deuda = nz(header.getTotal()).subtract(nz(header.getPago())).max(BigDecimal.ZERO);
+            if (deuda.signum() > 0) {
+                montoCxp = reversarCreditoProveedor(header.getCodigoProveedor(), deuda, purchaseId);
+            }
+        }
+
+        log.info("Anulación compra {} user {} motivo='{}' devuelto={} credito={} cxpReversada={}",
+                purchaseId, principal != null ? principal.getName() : "SYSTEM",
+                req.motivo(), totalDevuelto, credito, montoCxp);
+        return new AnnulPurchaseResponse(purchaseId, "NULA", totalDevuelto,
+                montoCxp.signum() > 0, montoCxp);
+    }
+
+    /**
+     * Enriquece las líneas de la respuesta con el nombre del artículo (la
+     * entidad de detalle solo guarda el código). Batch lookup para el drawer
+     * de detalle del POS; el record es inmutable, así que se reconstruye.
+     */
+    private PurchaseResponse withProductNames(PurchaseResponse resp, List<DetalleFacturaCompra> lineas) {
+        List<Integer> ids = lineas.stream().map(DetalleFacturaCompra::getCodigoArticulo).distinct().toList();
+        Map<Integer, String> names = productCrud.findAllById(ids).stream()
+                .collect(Collectors.toMap(a -> a.getCodigoArticulo(), a -> a.getArticulo(), (a, b) -> a));
+        List<PurchaseLineResponse> enriched = resp.lines().stream()
+                .map(l -> new PurchaseLineResponse(
+                        l.id(), l.productId(),
+                        names.getOrDefault(l.productId(), "Art. " + l.productId()),
+                        l.quantity(), l.price(), l.tax(), l.subtotal(), l.expirationDate()))
+                .toList();
+        return new PurchaseResponse(
+                resp.id(), resp.supplierId(), resp.supplierName(), resp.supplierInvoiceNumber(),
+                resp.warehouseCode(), resp.date(), resp.status(), resp.invoiceType(), resp.dueDate(),
+                resp.subtotal(), resp.tax(), resp.total(), resp.payment(), resp.user(), enriched);
     }
 }
