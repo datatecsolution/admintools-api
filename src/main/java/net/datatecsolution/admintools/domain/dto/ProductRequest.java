@@ -8,6 +8,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * DTO de entrada para crear o actualizar el master de un producto (INV-4).
@@ -37,6 +38,11 @@ public record ProductRequest(
         Integer type,
 
         @NotNull(message = "El estado activo/inactivo es obligatorio")
-        Boolean active
+        Boolean active,
+
+        /** Códigos de barra del producto (tabla codigos_articulos, N por artículo).
+         *  Soportan ceros a la izquierda (String). El primero es el principal.
+         *  Opcional; null/omitido = no tocar los existentes en edición. */
+        List<String> barcodes
 ) {
 }

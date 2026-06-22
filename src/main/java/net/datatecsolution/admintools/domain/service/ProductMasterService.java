@@ -4,21 +4,33 @@ import jakarta.persistence.EntityNotFoundException;
 import net.datatecsolution.admintools.domain.dto.ProductRequest;
 import net.datatecsolution.admintools.domain.dto.ProductResponse;
 import net.datatecsolution.admintools.persistence.crud.ArticuloMasterCRUD;
+import net.datatecsolution.admintools.persistence.crud.CajaCRUD;
 import net.datatecsolution.admintools.persistence.crud.PreciosArticuloCRUD;
 import net.datatecsolution.admintools.persistence.entity.ArticuloMaster;
+import net.datatecsolution.admintools.persistence.entity.Caja;
 import net.datatecsolution.admintools.persistence.entity.PrecioArticulo;
 import net.datatecsolution.admintools.persistence.mapper.ProductMasterMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
+import javax.sql.DataSource;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * CRUD del master de productos (INV-4). Trabaja contra la tabla
@@ -27,6 +39,11 @@ import java.util.Map;
  *
  * El stock NO se gestiona aqui: vive en
  * {@code existencia_articulo_bodega} y se consulta por {@code StockService}.
+ *
+ * Códigos de barra (US Productos): N por artículo en {@code codigos_articulos}
+ * (String, soportan ceros a la izquierda). Se sincronizan con delete+insert y
+ * se valida unicidad global (409 si el código pertenece a otro artículo). El
+ * {@code altCode} legacy (Integer) se conserva aparte.
  */
 @Service
 public class ProductMasterService {
@@ -34,9 +51,21 @@ public class ProductMasterService {
     /** Tipo de precio "Publico General" (precios.codigo_precio) — el obligatorio. */
     private static final int PRECIO_PUBLICO_GENERAL = 1;
 
+    /** Para validar el nombre de BD de caja antes de interpolarlo en SQL cross-DB. */
+    private static final Pattern SAFE_DB = Pattern.compile("[A-Za-z0-9_]+");
+
     @Autowired private ArticuloMasterCRUD crud;
     @Autowired private ProductMasterMapper mapper;
     @Autowired private PreciosArticuloCRUD preciosArticuloCRUD;
+
+    /** JdbcTemplate sobre la BD común (codigos_articulos / compras / cross-DB ventas). */
+    private final JdbcTemplate jdbc;
+    private final CajaCRUD cajaCRUD;
+
+    public ProductMasterService(@Qualifier("commonDataSource") DataSource commonDS, CajaCRUD cajaCRUD) {
+        this.jdbc = new JdbcTemplate(commonDS);
+        this.cajaCRUD = cajaCRUD;
+    }
 
     public Page<ProductResponse> search(String name, int page, int size) {
         // Sprint 4.5+ fix: orden por id DESC para que los productos recien
@@ -53,7 +82,10 @@ public class ProductMasterService {
         // codigo_precio=1), NO la columna legacy articulo.precio_articulo (que es
         // derivada y puede estar desactualizada). Una query por página.
         Map<Integer, BigDecimal> publico = preciosPublicoGeneral(result.getContent());
-        return result.map(e -> conPrecioPublico(mapper.toResponse(e), e, publico));
+        // Códigos de barra en bloque (una query por página).
+        Map<Integer, List<String>> barcodes = barcodesByProduct(
+                result.getContent().stream().map(ArticuloMaster::getCodigoArticulo).toList());
+        return result.map(e -> conPrecioPublico(mapper.toResponse(e), e, publico, barcodes));
     }
 
     private Map<Integer, BigDecimal> preciosPublicoGeneral(List<ArticuloMaster> items) {
@@ -68,21 +100,53 @@ public class ProductMasterService {
         return map;
     }
 
+    /** Carga en bloque los códigos de barra de un conjunto de artículos (orden estable). */
+    private Map<Integer, List<String>> barcodesByProduct(List<Integer> ids) {
+        Map<Integer, List<String>> map = new HashMap<>();
+        if (ids == null || ids.isEmpty()) {
+            return map;
+        }
+        String in = ids.stream().map(x -> "?").collect(Collectors.joining(","));
+        jdbc.query("SELECT codigo_articulo, codigo_barra FROM codigos_articulos "
+                        + "WHERE codigo_articulo IN (" + in + ") ORDER BY id_codigo",
+                rs -> {
+                    Integer art = rs.getInt("codigo_articulo");
+                    String code = rs.getString("codigo_barra");
+                    if (code != null) {
+                        map.computeIfAbsent(art, k -> new ArrayList<>()).add(code);
+                    }
+                }, ids.toArray());
+        return map;
+    }
+
+    private List<String> barcodesOf(int id) {
+        return barcodesByProduct(List.of(id)).getOrDefault(id, List.of());
+    }
+
     private ProductResponse conPrecioPublico(ProductResponse r, ArticuloMaster e,
-                                             Map<Integer, BigDecimal> publico) {
+                                             Map<Integer, BigDecimal> publico,
+                                             Map<Integer, List<String>> barcodes) {
         BigDecimal price = publico.get(e.getCodigoArticulo());
         if (price == null) {
             // fallback: legacy precio_articulo si el producto no tiene precio público asignado
             price = e.getPrecioArticulo() == null ? BigDecimal.ZERO : BigDecimal.valueOf(e.getPrecioArticulo());
         }
         return new ProductResponse(r.id(), r.name(), price, r.categoryId(),
-                r.taxId(), r.altCode(), r.type(), r.active());
+                r.taxId(), r.altCode(), r.type(), r.active(),
+                barcodes.getOrDefault(e.getCodigoArticulo(), List.of()));
+    }
+
+    private ProductResponse withBarcodes(ProductResponse r, List<String> barcodes) {
+        return new ProductResponse(r.id(), r.name(), r.price(), r.categoryId(),
+                r.taxId(), r.altCode(), r.type(), r.active(), barcodes);
     }
 
     @Transactional
     public ProductResponse create(ProductRequest request) {
         ArticuloMaster entity = mapper.toEntity(request);
-        return mapper.toResponse(crud.save(entity));
+        ArticuloMaster saved = crud.save(entity);
+        syncBarcodes(saved.getCodigoArticulo(), request.barcodes());
+        return withBarcodes(mapper.toResponse(saved), barcodesOf(saved.getCodigoArticulo()));
     }
 
     @Transactional
@@ -90,7 +154,52 @@ public class ProductMasterService {
         ArticuloMaster entity = crud.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Product " + id + " not found"));
         mapper.updateEntity(request, entity);
-        return mapper.toResponse(crud.save(entity));
+        ArticuloMaster saved = crud.save(entity);
+        syncBarcodes(id, request.barcodes());
+        return withBarcodes(mapper.toResponse(saved), barcodesOf(id));
+    }
+
+    /**
+     * Reemplaza los códigos de barra del artículo (delete + insert), validando
+     * unicidad global. {@code null} = no tocar (PUT que no envía barcodes).
+     * Lista vacía = limpiar todos. Lanza 409 si algún código ya pertenece a
+     * otro artículo.
+     */
+    private void syncBarcodes(int id, List<String> raw) {
+        if (raw == null) {
+            return; // edición que no gestiona barcodes: dejar los existentes
+        }
+        // normalizar: trim, descartar vacíos, sin duplicados (preservando orden)
+        List<String> codes = new ArrayList<>(new LinkedHashSet<>(
+                raw.stream()
+                        .filter(s -> s != null)
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .toList()));
+
+        if (!codes.isEmpty()) {
+            String in = codes.stream().map(x -> "?").collect(Collectors.joining(","));
+            Object[] args = new Object[codes.size() + 1];
+            for (int i = 0; i < codes.size(); i++) {
+                args[i] = codes.get(i);
+            }
+            args[codes.size()] = id;
+            List<String> dupes = jdbc.queryForList(
+                    "SELECT DISTINCT codigo_barra FROM codigos_articulos "
+                            + "WHERE codigo_barra IN (" + in + ") AND codigo_articulo <> ?",
+                    String.class, args);
+            if (!dupes.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Código(s) de barra en uso por otro producto: " + String.join(", ", dupes));
+            }
+        }
+
+        jdbc.update("DELETE FROM codigos_articulos WHERE codigo_articulo = ?", id);
+        if (!codes.isEmpty()) {
+            jdbc.batchUpdate(
+                    "INSERT INTO codigos_articulos (codigo_articulo, codigo_barra) VALUES (?, ?)",
+                    codes.stream().map(c -> new Object[]{id, c}).toList());
+        }
     }
 
     @Transactional
@@ -98,6 +207,56 @@ public class ProductMasterService {
         if (!crud.existsById(id)) {
             throw new EntityNotFoundException("Product " + id + " not found");
         }
-        crud.deleteById(id);
+        if (enUso(id)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El producto está referenciado en facturas o compras; no se puede eliminar. "
+                            + "Deséchelo dando de baja (inactivar) en su lugar.");
+        }
+        // producto sin transacciones: limpiar filas hijas propias y borrar el master.
+        jdbc.update("DELETE FROM codigos_articulos WHERE codigo_articulo = ?", id);
+        jdbc.update("DELETE FROM precios_articulos WHERE codigo_articulo = ?", id);
+        jdbc.update("DELETE FROM existencia_articulo_bodega WHERE codigo_articulo = ?", id);
+        jdbc.update("DELETE FROM articulo_kardex WHERE codigo_articulo = ?", id);
+        try {
+            crud.deleteById(id);
+        } catch (DataIntegrityViolationException ex) {
+            // red de seguridad: alguna FK no anticipada → 409 en vez de 500.
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "El producto tiene referencias que impiden eliminarlo; inactívelo en su lugar.");
+        }
+    }
+
+    /**
+     * ¿El producto está referenciado por alguna transacción? Compras y
+     * devoluciones de compra viven en la BD común; las ventas
+     * ({@code detalle_factura}) están particionadas por caja, así que se hace
+     * fan-out sobre cada BD de caja.
+     */
+    private boolean enUso(int id) {
+        Integer compras = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM detalle_factura_compra WHERE codigo_articulo = ?",
+                Integer.class, id);
+        if (compras != null && compras > 0) {
+            return true;
+        }
+        Integer devCompras = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM detalle_devoluciones_compra WHERE codigo_articulo = ?",
+                Integer.class, id);
+        if (devCompras != null && devCompras > 0) {
+            return true;
+        }
+        for (Caja caja : cajaCRUD.findAll()) {
+            String db = caja.getNombreDb();
+            if (db == null || !SAFE_DB.matcher(db).matches()) {
+                continue;
+            }
+            Integer ventas = jdbc.queryForObject(
+                    "SELECT EXISTS(SELECT 1 FROM " + db + ".detalle_factura WHERE codigo_articulo = ? LIMIT 1)",
+                    Integer.class, id);
+            if (ventas != null && ventas > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 }

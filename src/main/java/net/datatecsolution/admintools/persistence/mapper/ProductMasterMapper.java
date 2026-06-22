@@ -22,7 +22,8 @@ public interface ProductMasterMapper {
             @Mapping(source = "codigoImpuesto", target = "taxId"),
             @Mapping(source = "codArticulo",    target = "altCode"),
             @Mapping(source = "tipoArticulo",   target = "type"),
-            @Mapping(source = "estado",         target = "active")
+            @Mapping(source = "estado",         target = "active"),
+            @Mapping(target = "barcodes",       ignore = true)
     })
     ProductResponse toResponse(ArticuloMaster entity);
 
