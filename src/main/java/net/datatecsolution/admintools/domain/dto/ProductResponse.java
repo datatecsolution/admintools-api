@@ -1,6 +1,7 @@
 package net.datatecsolution.admintools.domain.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * DTO de salida del master de producto (INV-4). Datos maestros sin stock —
@@ -14,6 +15,7 @@ public record ProductResponse(
         Integer taxId,
         Integer altCode,
         Integer type,
-        Boolean active
+        Boolean active,
+        List<String> barcodes
 ) {
 }
