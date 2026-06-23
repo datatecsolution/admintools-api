@@ -23,7 +23,10 @@ public interface CustomerMapper {
             @Mapping(source = "nombre",    target = "customerName"),
             @Mapping(source = "direccion", target = "customerAdress"),
             @Mapping(source = "telefono",  target = "customerTelephoneNumber"),
+            @Mapping(source = "celular",   target = "mobile"),
             @Mapping(source = "rtn",       target = "customerRTN")
+            // limiteCredito, idVendedor, tipoCliente: auto (mismo nombre).
+            // vendedorNombre y saldo no salen de la entidad: los llena el service.
     })
     Customer toCustomer(Cliente cliente);
 

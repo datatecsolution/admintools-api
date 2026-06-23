@@ -25,6 +25,9 @@ public record CustomerCreateRequest(
         @Size(max = 20, message = "El telefono no puede exceder 20 caracteres")
         String phone,
 
+        @Size(max = 20, message = "El celular no puede exceder 20 caracteres")
+        String mobile,
+
         /**
          * 1 = contado (alta rápida del POS) · 2 = crédito (formulario completo).
          * null = comportamiento legacy del panel admin (tipo 2, solo ADMIN).
@@ -34,6 +37,10 @@ public record CustomerCreateRequest(
         Integer tipoCliente,
 
         @DecimalMin(value = "0.00", message = "El límite de crédito no puede ser negativo")
-        BigDecimal limiteCredito
+        BigDecimal limiteCredito,
+
+        /** Vendedor asignado al cliente (empleados.codigo_empleado). Opcional;
+         *  si no viene, el service usa el vendedor del usuario autenticado. */
+        Integer idVendedor
 ) {
 }
