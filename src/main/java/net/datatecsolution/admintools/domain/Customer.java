@@ -15,6 +15,14 @@ public class Customer {
     /** 1 = contado/rápido (oculto en admin, sin crédito); 2 = gestionado. */
     private Integer tipoCliente;
     private java.math.BigDecimal limiteCredito;
+    /** Celular (columna cliente.movil). El form legacy lo omitía. */
+    private String mobile;
+    /** Vendedor asignado (cliente.id_vendedor). */
+    private Integer idVendedor;
+    /** Nombre del vendedor (join empleados) — lo llena el service. */
+    private String vendedorNombre;
+    /** Saldo CxC (f_saldo_cliente) — lo llena el service, no es columna directa. */
+    private java.math.BigDecimal saldo;
 
     public java.math.BigDecimal getLimiteCredito() {
         return limiteCredito;
@@ -22,6 +30,38 @@ public class Customer {
 
     public void setLimiteCredito(java.math.BigDecimal limiteCredito) {
         this.limiteCredito = limiteCredito;
+    }
+
+    public String getMobile() {
+        return mobile;
+    }
+
+    public void setMobile(String mobile) {
+        this.mobile = mobile;
+    }
+
+    public Integer getIdVendedor() {
+        return idVendedor;
+    }
+
+    public void setIdVendedor(Integer idVendedor) {
+        this.idVendedor = idVendedor;
+    }
+
+    public String getVendedorNombre() {
+        return vendedorNombre;
+    }
+
+    public void setVendedorNombre(String vendedorNombre) {
+        this.vendedorNombre = vendedorNombre;
+    }
+
+    public java.math.BigDecimal getSaldo() {
+        return saldo;
+    }
+
+    public void setSaldo(java.math.BigDecimal saldo) {
+        this.saldo = saldo;
     }
 
     public Integer getTipoCliente() {

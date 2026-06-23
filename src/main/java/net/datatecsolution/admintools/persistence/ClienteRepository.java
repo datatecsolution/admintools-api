@@ -48,7 +48,10 @@ public class ClienteRepository implements CustomerRepository {
     @Override
     public Customer create(Customer customer, int sellerId) {
         Cliente entity = mapper.toCliente(customer);
-        entity.setIdVendedor(sellerId);
+        // Vendedor: el asignado en el form (idVendedor>0) gana; si no, el del
+        // usuario autenticado (sellerId).
+        Integer asignado = customer.getIdVendedor();
+        entity.setIdVendedor(asignado != null && asignado > 0 ? asignado : sellerId);
         // tipo explícito (POS: 1 contado / 2 crédito); null = legacy del panel
         // admin -> 2 (gestionado). El gate de tipo 2 vive en CustomerService.
         entity.setTipoCliente(customer.getTipoCliente() != null ? customer.getTipoCliente() : 2);
@@ -58,6 +61,7 @@ public class ClienteRepository implements CustomerRepository {
         // del esquema legacy): restaurar los del Swing.
         if (entity.getDireccion() == null) entity.setDireccion("NA");
         if (entity.getTelefono() == null) entity.setTelefono("NA");
+        if (entity.getCelular() == null) entity.setCelular("NA");
         if (entity.getRtn() == null) entity.setRtn("CF");
         if (entity.getLimiteCredito() == null) entity.setLimiteCredito(java.math.BigDecimal.ZERO);
         return mapper.toCustomer(clienteCRUD.save(entity));
@@ -66,13 +70,23 @@ public class ClienteRepository implements CustomerRepository {
     @Override
     public Customer update(int id, Customer customer) {
         // Cargamos la entidad existente y solo pisamos los campos editables del
-        // DTO; asi preservamos vendedor, limite de credito, tipo, etc.
+        // DTO; preservamos lo que el form no toca (tipo, saldo, ruta, etc.).
         Cliente existing = clienteCRUD.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Cliente " + id + " no encontrado"));
         existing.setNombre(customer.getCustomerName());
         existing.setRtn(customer.getCustomerRTN());
         existing.setDireccion(customer.getCustomerAdress());
         existing.setTelefono(customer.getCustomerTelephoneNumber());
+        if (customer.getMobile() != null) existing.setCelular(customer.getMobile());
+        // Reasignación de vendedor (solo si el form la manda).
+        Integer asignado = customer.getIdVendedor();
+        if (asignado != null && asignado > 0) existing.setIdVendedor(asignado);
+        // Límite de crédito: Cliente.setLimiteCredito SUMA (legacy). Para ASIGNAR
+        // el valor exacto, aplicamos el delta (nuevo - actual).
+        if (customer.getLimiteCredito() != null) {
+            java.math.BigDecimal delta = customer.getLimiteCredito().subtract(existing.getLimiteCredito());
+            existing.setLimiteCredito(delta);
+        }
         return mapper.toCustomer(clienteCRUD.save(existing));
     }
 

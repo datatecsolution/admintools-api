@@ -10,7 +10,15 @@ public record CustomerResponse(
         String rtn,
         String address,
         String phone,
+        /** Celular (cliente.movil). */
+        String mobile,
         /** 1 = contado/rápido; 2 = gestionado (elegible a crédito). */
-        Integer tipoCliente
+        Integer tipoCliente,
+        java.math.BigDecimal limiteCredito,
+        Integer idVendedor,
+        /** Nombre del vendedor asignado (join empleados). */
+        String vendedorNombre,
+        /** Saldo CxC (f_saldo_cliente). */
+        java.math.BigDecimal saldo
 ) {
 }
