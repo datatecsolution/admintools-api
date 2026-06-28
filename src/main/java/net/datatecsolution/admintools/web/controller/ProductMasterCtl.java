@@ -42,12 +42,13 @@ public class ProductMasterCtl {
     }
 
     @GetMapping
-    @Operation(summary = "Listar productos paginados, opcionalmente filtrados por nombre")
+    @Operation(summary = "Listar productos paginados; filtro por nombre/código/barra (name) o por categoría (category)")
     public ResponseEntity<Page<ProductResponse>> search(
             @RequestParam(name = "name", required = false) String name,
+            @RequestParam(name = "category", required = false) Integer category,
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
-        return ResponseEntity.ok(service.search(name, page, size));
+        return ResponseEntity.ok(service.search(name, category, page, size));
     }
 
     @PostMapping
