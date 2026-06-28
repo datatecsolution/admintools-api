@@ -67,16 +67,24 @@ public class ProductMasterService {
         this.cajaCRUD = cajaCRUD;
     }
 
-    public Page<ProductResponse> search(String name, int page, int size) {
+    public Page<ProductResponse> search(String name, Integer category, int page, int size) {
         // Sprint 4.5+ fix: orden por id DESC para que los productos recien
         // creados aparezcan en la primera pagina. Antes MySQL devolvia el
         // orden fisico (por PK clustered ascendente) y un articulo nuevo
         // con id 319697 quedaba sepultado en la pagina ~31900.
-        PageRequest pageReq = PageRequest.of(page, size,
-                Sort.by(Sort.Direction.DESC, "codigoArticulo"));
-        Page<ArticuloMaster> result = (name == null || name.isBlank())
-                ? crud.findAll(pageReq)
-                : crud.findByArticuloContaining(name, pageReq);
+        Page<ArticuloMaster> result;
+        if (name != null && !name.isBlank()) {
+            // Buscador: por nombre OR código OR código de barra. El query nativo
+            // ya ordena (ORDER BY id DESC), por eso el Pageable va SIN sort.
+            result = crud.searchByNameCodeBarcode(name.trim(), PageRequest.of(page, size));
+        } else if (category != null) {
+            // Armado por categoría (= marca): TODOS los productos de esa categoría.
+            result = crud.findByCodigoMarca(category,
+                    PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "codigoArticulo")));
+        } else {
+            // Listado: orden por id DESC (productos recién creados primero).
+            result = crud.findAll(PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "codigoArticulo")));
+        }
 
         // El precio del catálogo es el Precio Público General (precios_articulos,
         // codigo_precio=1), NO la columna legacy articulo.precio_articulo (que es
