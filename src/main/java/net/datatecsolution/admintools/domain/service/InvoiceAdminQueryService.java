@@ -1,8 +1,10 @@
 package net.datatecsolution.admintools.domain.service;
 
 import net.datatecsolution.admintools.domain.dto.InvoiceAdminDetailResponse;
+import net.datatecsolution.admintools.domain.dto.InvoiceAdminSummaryResponse;
 import net.datatecsolution.admintools.domain.dto.InvoiceListItem;
 import net.datatecsolution.admintools.persistence.crud.CajaCRUD;
+import net.datatecsolution.admintools.persistence.entity.Caja;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.data.domain.Page;
@@ -54,44 +56,80 @@ public class InvoiceAdminQueryService {
         return db;
     }
 
-    /** estado: ACT | NULA | ALL (default ACT). */
-    public Page<InvoiceListItem> list(int cajaCode, String search, LocalDate from, LocalDate to,
-                                      String estado, Pageable pageable) {
-        String db = resolveDb(cajaCode);
+    /** Filtro común (estado/fechas/búsqueda) + sus valores por caja. */
+    private record Filter(String where, List<Object> values) {}
 
-        StringBuilder where = new StringBuilder(" WHERE 1=1 ");
-        List<Object> args = new ArrayList<>();
-        if (estado != null && !"ALL".equalsIgnoreCase(estado)) {
-            where.append(" AND e.estado_factura = ? ");
-            args.add(estado);
-        }
-        if (from != null) { where.append(" AND e.fecha >= ? "); args.add(from.atStartOfDay()); }
-        if (to != null)   { where.append(" AND e.fecha < ? ");  args.add(to.plusDays(1).atStartOfDay()); }
+    /** Construye el WHERE y los valores. Búsqueda cubre nombre/código/Nº/RTN. */
+    private Filter buildFilter(String estado, LocalDate from, LocalDate to, String search) {
+        StringBuilder w = new StringBuilder(" WHERE 1=1 ");
+        List<Object> v = new ArrayList<>();
+        if (estado != null && !"ALL".equalsIgnoreCase(estado)) { w.append(" AND e.estado_factura = ? "); v.add(estado); }
+        if (from != null) { w.append(" AND e.fecha >= ? "); v.add(from.atStartOfDay()); }
+        if (to != null)   { w.append(" AND e.fecha < ? ");  v.add(to.plusDays(1).atStartOfDay()); }
         if (search != null && !search.isBlank()) {
-            where.append(" AND (c.nombre_cliente LIKE ? OR e.codigo_cliente LIKE ?) ");
+            w.append(" AND (cli.nombre_cliente LIKE ? OR e.codigo_cliente LIKE ? "
+                    + "OR CAST(e.numero_factura AS CHAR) LIKE ? OR cli.rtn LIKE ?) ");
             String like = "%" + search.trim() + "%";
-            args.add(like); args.add(like);
+            v.add(like); v.add(like); v.add(like); v.add(like);
         }
+        return new Filter(w.toString(), v);
+    }
 
-        String base = " FROM " + db + ".encabezado_factura e "
-                + " LEFT JOIN admin_tools.cliente c ON c.codigo_cliente = e.codigo_cliente "
+    /** SELECT de una caja (con la columna `caja` literal) para la UNION. */
+    private String cajaSelect(int cajaCode, String where) {
+        String db = resolveDb(cajaCode);
+        return " SELECT e.numero_factura, e.fecha, e.codigo_cliente, cli.nombre_cliente, cli.rtn, "
+                + " TRIM(CONCAT_WS(' ', emp.nombre, emp.apellido)) AS nombre_vendedor, "
+                + " e.total, e.estado_factura, e.tipo_factura, " + cajaCode + " AS caja "
+                + " FROM " + db + ".encabezado_factura e "
+                + " LEFT JOIN admin_tools.cliente cli ON cli.codigo_cliente = e.codigo_cliente "
                 + " LEFT JOIN admin_tools.empleados emp ON emp.codigo_empleado = e.codigo_vendedor "
                 + where;
+    }
 
-        Long total = jdbc.queryForObject("SELECT COUNT(*) " + base, Long.class, args.toArray());
+    /** caja != null → esa caja; null → TODAS las cajas registradas (consolidado). */
+    private List<Integer> resolveCajas(Integer caja) {
+        if (caja != null) return List.of(caja);
+        List<Integer> ids = new ArrayList<>();
+        for (Caja c : cajaCRUD.findAll()) {
+            if (c.getCodigo() != null && c.getNombreDb() != null) ids.add(c.getCodigo());
+        }
+        return ids;
+    }
+
+    private record Union(String sql, Object[] args) {}
+
+    private Union buildUnion(List<Integer> cajas, Filter f) {
+        List<String> parts = new ArrayList<>();
+        List<Object> args = new ArrayList<>();
+        for (int c : cajas) {
+            parts.add("(" + cajaSelect(c, f.where()) + ")");
+            args.addAll(f.values());
+        }
+        return new Union(String.join(" UNION ALL ", parts), args.toArray());
+    }
+
+    /**
+     * Lista consolidada y paginada SERVER-SIDE sobre todas las cajas (o una).
+     * estado: ACT | NULA | ALL (default ACT). Búsqueda por nombre/código/Nº/RTN.
+     */
+    public Page<InvoiceListItem> list(Integer caja, String search, LocalDate from, LocalDate to,
+                                      String estado, Pageable pageable) {
+        List<Integer> cajas = resolveCajas(caja);
+        if (cajas.isEmpty()) return new PageImpl<>(List.of(), pageable, 0);
+        Union u = buildUnion(cajas, buildFilter(estado, from, to, search));
+
+        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM (" + u.sql() + ") u", Long.class, u.args());
         long totalElements = total != null ? total : 0L;
 
-        List<Object> pageArgs = new ArrayList<>(args);
+        List<Object> pageArgs = new ArrayList<>(List.of(u.args()));
         pageArgs.add(pageable.getPageSize());
         pageArgs.add(pageable.getOffset());
         List<InvoiceListItem> rows = jdbc.query(
-                "SELECT e.numero_factura, e.fecha, e.codigo_cliente, c.nombre_cliente, c.rtn, "
-                        + "TRIM(CONCAT_WS(' ', emp.nombre, emp.apellido)) AS nombre_vendedor, "
-                        + "e.total, e.estado_factura, e.tipo_factura " + base
-                        + " ORDER BY e.numero_factura DESC LIMIT ? OFFSET ?",
+                "SELECT * FROM (" + u.sql() + ") u ORDER BY u.fecha DESC, u.numero_factura DESC LIMIT ? OFFSET ?",
                 (rs, i) -> new InvoiceListItem(
                         rs.getInt("numero_factura"),
-                        cajaCode,
+                        rs.getInt("caja"),
                         rs.getTimestamp("fecha") != null ? rs.getTimestamp("fecha").toLocalDateTime() : null,
                         rs.getString("codigo_cliente"),
                         rs.getString("nombre_cliente"),
@@ -103,6 +141,20 @@ public class InvoiceAdminQueryService {
                 pageArgs.toArray());
 
         return new PageImpl<>(rows, pageable, totalElements);
+    }
+
+    /** Total server-side (count + suma, excluyendo NULA) del filtro, sobre todas las cajas. */
+    public InvoiceAdminSummaryResponse summary(Integer caja, String search, LocalDate from, LocalDate to,
+                                               String estado) {
+        List<Integer> cajas = resolveCajas(caja);
+        if (cajas.isEmpty()) return new InvoiceAdminSummaryResponse(0L, BigDecimal.ZERO);
+        Union u = buildUnion(cajas, buildFilter(estado, from, to, search));
+        return jdbc.queryForObject(
+                "SELECT COUNT(*) AS cnt, "
+                        + "COALESCE(SUM(CASE WHEN u.estado_factura <> 'NULA' THEN u.total ELSE 0 END), 0) AS total "
+                        + "FROM (" + u.sql() + ") u",
+                (rs, i) -> new InvoiceAdminSummaryResponse(rs.getLong("cnt"), rs.getBigDecimal("total")),
+                u.args());
     }
 
     /**

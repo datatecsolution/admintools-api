@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import net.datatecsolution.admintools.domain.dto.InvoiceAdminDetailResponse;
+import net.datatecsolution.admintools.domain.dto.InvoiceAdminSummaryResponse;
 import net.datatecsolution.admintools.domain.dto.InvoiceCreateRequest;
 import net.datatecsolution.admintools.domain.dto.InvoiceListItem;
 import net.datatecsolution.admintools.domain.dto.InvoiceResponse;
@@ -54,9 +55,9 @@ public class InvoiceCtl {
      */
     @GetMapping("/admin")
     @PreAuthorize("hasAnyRole('ADMIN','INVENTORY')")
-    @Operation(summary = "Listar facturas de una caja (filtros: estado, fechas, cliente)")
+    @Operation(summary = "Listar facturas paginadas y consolidadas (todas las cajas o una); filtros estado/fechas/búsqueda")
     public ResponseEntity<Page<InvoiceListItem>> adminList(
-            @RequestParam("caja") int caja,
+            @RequestParam(name = "caja", required = false) Integer caja,
             @RequestParam(name = "search", required = false) String search,
             @RequestParam(name = "from", required = false)
                 @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -66,6 +67,20 @@ public class InvoiceCtl {
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(adminQuery.list(caja, search, from, to, estado, PageRequest.of(page, size)));
+    }
+
+    @GetMapping("/admin/summary")
+    @PreAuthorize("hasAnyRole('ADMIN','INVENTORY')")
+    @Operation(summary = "Total server-side (count + suma sin anuladas) del filtro, sobre todas las cajas o una")
+    public ResponseEntity<InvoiceAdminSummaryResponse> adminSummary(
+            @RequestParam(name = "caja", required = false) Integer caja,
+            @RequestParam(name = "search", required = false) String search,
+            @RequestParam(name = "from", required = false)
+                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(name = "to", required = false)
+                @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(name = "estado", defaultValue = "ACT") String estado) {
+        return ResponseEntity.ok(adminQuery.summary(caja, search, from, to, estado));
     }
 
     /**
