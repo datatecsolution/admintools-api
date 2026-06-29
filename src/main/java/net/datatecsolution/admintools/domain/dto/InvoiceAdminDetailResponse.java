@@ -31,6 +31,15 @@ public record InvoiceAdminDetailResponse(
         BigDecimal pago,
         BigDecimal cambio,
         String observacion,
+        // US-040: desglose por tasa + total en letras + bloque fiscal (ticket).
+        String totalLetras,
+        BigDecimal subtotalExento,
+        BigDecimal subtotal15,
+        BigDecimal subtotal18,
+        BigDecimal isv15,
+        BigDecimal isv18,
+        FiscalInfo fiscal,
+        CreditoInfo credito,
         List<Linea> lineas
 ) {
     public record Linea(
@@ -38,6 +47,8 @@ public record InvoiceAdminDetailResponse(
             String articulo,
             BigDecimal cantidad,
             BigDecimal precio,
+            BigDecimal descuento,
+            BigDecimal impuesto,
             BigDecimal total,
             BigDecimal devuelta
     ) {}

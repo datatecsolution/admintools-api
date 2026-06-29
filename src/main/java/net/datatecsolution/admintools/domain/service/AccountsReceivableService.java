@@ -440,4 +440,23 @@ public class AccountsReceivableService {
     private static BigDecimal nz(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;
     }
+
+    /** Saldo + abonado de una factura a crédito (US-040, ticket). */
+    public record Balance(BigDecimal saldo, BigDecimal abono) {}
+
+    /**
+     * US-040 — saldo pendiente y total abonado de una factura a crédito, para
+     * el ticket "FACTURA A CRÉDITO". Devuelve {@code null} si la factura no
+     * tiene cuenta en CxC (el caller usa saldo=total, abono=0).
+     */
+    public Balance getInvoiceBalance(int codigoCaja, int noFactura) {
+        return cuentaFacturaCRUD.findFirstByNoFacturaAndCodigoCaja(noFactura, codigoCaja)
+                .map(cf -> {
+                    int cuenta = cf.getCodigoCuenta();
+                    return new Balance(
+                            scale(cuentaFacturaCRUD.saldoFactura(cuenta)),
+                            scale(cuentaPorCobrarFacturaCRUD.sumAbonos(cuenta)));
+                })
+                .orElse(null);
+    }
 }

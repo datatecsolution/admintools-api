@@ -30,6 +30,9 @@ public record InvoiceResponse(
         BigDecimal total,
         BigDecimal payment,
         String observation,
-        List<InvoiceLineResponse> lines
+        String totalLetras,
+        List<InvoiceLineResponse> lines,
+        FiscalInfo fiscal,
+        CreditoInfo credito
 ) {
 }
