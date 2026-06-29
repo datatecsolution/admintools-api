@@ -1,5 +1,7 @@
 package net.datatecsolution.admintools.domain.service;
 
+import net.datatecsolution.admintools.domain.dto.CreditoInfo;
+import net.datatecsolution.admintools.domain.dto.FiscalInfo;
 import net.datatecsolution.admintools.domain.dto.InvoiceAdminDetailResponse;
 import net.datatecsolution.admintools.domain.dto.InvoiceAdminSummaryResponse;
 import net.datatecsolution.admintools.domain.dto.InvoiceListItem;
@@ -172,17 +174,35 @@ public class InvoiceAdminQueryService {
                     "SELECT e.numero_factura, e.fecha, e.estado_factura, e.tipo_factura, e.tipo_pago, "
                             + "e.codigo_cliente, c.nombre_cliente, c.rtn, "
                             + "TRIM(CONCAT_WS(' ', emp.nombre, emp.apellido)) AS nombre_vendedor, "
-                            + "e.usuario, e.subtotal, e.impuesto, e.descuento, e.total, e.pago, e.observacion "
+                            + "e.usuario, e.subtotal, e.impuesto, e.descuento, e.total, e.pago, e.observacion, e.total_letras, "
+                            + "e.subtotal_excento, e.subtotal15, e.subtotal18, e.isv18, "
+                            + "df.CAI, df.codigo_tipo_facturacion, df.factura_inicial, df.factura_final, df.fecha_limite_emision, df.observacion AS obs_rango "
                             + "FROM " + db + ".encabezado_factura e "
                             + "LEFT JOIN admin_tools.cliente c ON c.codigo_cliente = e.codigo_cliente "
                             + "LEFT JOIN admin_tools.empleados emp ON emp.codigo_empleado = e.codigo_vendedor "
+                            + "LEFT JOIN " + db + ".datos_factura df ON df.codigo_rango = e.cod_rango "
                             + "WHERE e.numero_factura = ?",
                     (rs, i) -> {
+                        int numFac = rs.getInt("numero_factura");
                         BigDecimal total = nz(rs.getBigDecimal("total"));
                         BigDecimal pago = nz(rs.getBigDecimal("pago"));
                         BigDecimal cambio = pago.subtract(total).max(BigDecimal.ZERO);
+                        BigDecimal impuesto = nz(rs.getBigDecimal("impuesto"));
+                        BigDecimal isv18 = nz(rs.getBigDecimal("isv18"));
+                        // El Swing imprime "Impuesto 15%" = columna impuesto cruda
+                        // (no impuesto−isv18); ver factura_ticket_fit.jrxml.
+                        BigDecimal isv15 = impuesto;
+                        java.sql.Date fl = rs.getDate("fecha_limite_emision");
+                        FiscalInfo fiscal = FiscalInfo.build(
+                                rs.getString("codigo_tipo_facturacion"),
+                                rs.getString("CAI"),
+                                rs.getString("factura_inicial"),
+                                rs.getString("factura_final"),
+                                fl != null ? fl.toLocalDate() : null,
+                                rs.getString("obs_rango"),
+                                numFac);
                         return new InvoiceAdminDetailResponse(
-                                rs.getInt("numero_factura"),
+                                numFac,
                                 cajaCode,
                                 rs.getTimestamp("fecha") != null ? rs.getTimestamp("fecha").toLocalDateTime() : null,
                                 rs.getString("estado_factura"),
@@ -194,10 +214,15 @@ public class InvoiceAdminQueryService {
                                 rs.getString("nombre_vendedor"),
                                 rs.getString("usuario"),
                                 nz(rs.getBigDecimal("subtotal")),
-                                nz(rs.getBigDecimal("impuesto")),
+                                impuesto,
                                 nz(rs.getBigDecimal("descuento")),
                                 total, pago, cambio,
                                 rs.getString("observacion"),
+                                rs.getString("total_letras"),
+                                nz(rs.getBigDecimal("subtotal_excento")),
+                                nz(rs.getBigDecimal("subtotal15")),
+                                nz(rs.getBigDecimal("subtotal18")),
+                                isv15, isv18, fiscal, null,
                                 List.of());
                     },
                     numero);
@@ -215,7 +240,8 @@ public class InvoiceAdminQueryService {
                 numero, cajaCode);
 
         List<InvoiceAdminDetailResponse.Linea> lineas = jdbc.query(
-                "SELECT d.codigo_articulo, a.articulo, SUM(d.cantidad) AS cantidad, d.precio, SUM(d.total) AS total "
+                "SELECT d.codigo_articulo, a.articulo, SUM(d.cantidad) AS cantidad, d.precio, "
+                        + "SUM(d.descuento) AS descuento, SUM(d.impuesto) AS impuesto, SUM(d.total) AS total "
                         + "FROM " + db + ".detalle_factura d "
                         + "LEFT JOIN admin_tools.articulo a ON a.codigo_articulo = d.codigo_articulo "
                         + "WHERE d.numero_factura = ? "
@@ -229,17 +255,63 @@ public class InvoiceAdminQueryService {
                             nombre != null ? nombre : "Art. " + art,
                             nz(rs.getBigDecimal("cantidad")),
                             nz(rs.getBigDecimal("precio")),
+                            nz(rs.getBigDecimal("descuento")),
+                            nz(rs.getBigDecimal("impuesto")),
                             nz(rs.getBigDecimal("total")),
                             devueltas.getOrDefault(art, BigDecimal.ZERO));
                 },
                 numero);
+
+        // US-040: bloque crédito solo para facturas a crédito (tipo 2).
+        CreditoInfo credito = (header.tipoFactura() != null && header.tipoFactura() == 2)
+                ? buildCredito(db, cajaCode, numero, header.total())
+                : null;
 
         return new InvoiceAdminDetailResponse(
                 header.numeroFactura(), header.codigoCaja(), header.fecha(), header.estadoFactura(),
                 header.tipoFactura(), header.tipoPago(), header.codigoCliente(), header.nombreCliente(),
                 header.rtn(), header.nombreVendedor(), header.usuario(), header.subtotal(), header.impuesto(),
                 header.descuento(), header.total(), header.pago(), header.cambio(), header.observacion(),
+                header.totalLetras(), header.subtotalExento(), header.subtotal15(), header.subtotal18(),
+                header.isv15(), header.isv18(), header.fiscal(), credito,
                 lineas);
+    }
+
+    /**
+     * US-040 — bloque crédito (vencimiento + saldo/abono de CxC + interés de
+     * mora) para una factura a crédito. fecha_vencimiento sale de la caja;
+     * saldo/abono de admin_tools (cuentas_facturas + función f_saldo_factura_cliente
+     * y abonos tipo 2); si no hay cuenta en CxC → saldo=total, abono=0.
+     */
+    private CreditoInfo buildCredito(String db, int cajaCode, int numero, BigDecimal total) {
+        CreditoInfo cxc = jdbc.queryForObject(
+                "SELECT e.fecha_vencimiento AS fv, "
+                        + "IFNULL(admin_tools.f_saldo_factura_cliente(cf.codigo_cuenta), ?) AS saldo, "
+                        + "IFNULL((SELECT SUM(m.debito) FROM admin_tools.cuentas_por_cobrar_facturas m "
+                        + "  WHERE m.codigo_cuenta = cf.codigo_cuenta AND m.tipo_movimiento = 2), 0) AS abono "
+                        + "FROM " + db + ".encabezado_factura e "
+                        + "LEFT JOIN admin_tools.cuentas_facturas cf "
+                        + "  ON cf.no_factura = e.numero_factura AND cf.codigo_caja = ? "
+                        + "WHERE e.numero_factura = ?",
+                (rs, i) -> {
+                    java.sql.Date fv = rs.getDate("fv");
+                    return new CreditoInfo(
+                            fv != null ? fv.toLocalDate() : null,
+                            nz(rs.getBigDecimal("saldo")),
+                            nz(rs.getBigDecimal("abono")),
+                            null);
+                },
+                nz(total), cajaCode, numero);
+
+        Integer interes = jdbc.query(
+                "SELECT interes_para_facturas_venc FROM admin_tools.config_app LIMIT 1",
+                rs -> rs.next() ? (Integer) rs.getObject(1) : null);
+
+        return new CreditoInfo(
+                cxc != null ? cxc.fechaVencimiento() : null,
+                cxc != null ? cxc.saldo() : nz(total),
+                cxc != null ? cxc.abono() : BigDecimal.ZERO,
+                interes != null ? interes : 0);
     }
 
     private static BigDecimal nz(BigDecimal v) { return v != null ? v : BigDecimal.ZERO; }

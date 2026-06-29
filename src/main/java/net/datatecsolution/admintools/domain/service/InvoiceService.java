@@ -3,6 +3,9 @@ package net.datatecsolution.admintools.domain.service;
 import jakarta.persistence.EntityNotFoundException;
 import net.datatecsolution.admintools.config.TenantContext;
 import net.datatecsolution.admintools.core.FacturacionCalculadora;
+import net.datatecsolution.admintools.core.NumberToLetterConverter;
+import net.datatecsolution.admintools.domain.dto.CreditoInfo;
+import net.datatecsolution.admintools.domain.dto.FiscalInfo;
 import net.datatecsolution.admintools.domain.dto.InvoiceCreateRequest;
 import net.datatecsolution.admintools.domain.dto.InvoiceLineRequest;
 import net.datatecsolution.admintools.domain.dto.InvoiceLineResponse;
@@ -18,6 +21,7 @@ import net.datatecsolution.admintools.persistence.entity.Orden;
 import net.datatecsolution.admintools.persistence.tenant.crud.DatosFacturaCRUD;
 import net.datatecsolution.admintools.persistence.tenant.crud.DetalleFacturaCRUD;
 import net.datatecsolution.admintools.persistence.tenant.crud.EncabezadoFacturaCRUD;
+import net.datatecsolution.admintools.persistence.tenant.entity.DatosFactura;
 import net.datatecsolution.admintools.persistence.tenant.entity.DetalleFactura;
 import net.datatecsolution.admintools.persistence.tenant.entity.EncabezadoFactura;
 import org.slf4j.Logger;
@@ -353,7 +357,7 @@ public class InvoiceService {
         h.setAgregaKardex(0);
         h.setCodigoVendedor(codigoVendedor); // empleado/vendedor (config ventana_vendedor; default 1)
         h.setCodRango(codRango);            // CAI activo de la caja
-        h.setTotalLetras("NA");
+        h.setTotalLetras(totalEnLetras(tot.getTotal()));
         h.setObservacion(req.observacion() == null || req.observacion().isBlank()
                 ? "NA" : req.observacion());
         h.setFechaVencimiento(LocalDate.now().plusDays(dueDays));
@@ -441,7 +445,9 @@ public class InvoiceService {
         // Cache de nombres de cliente para no martillar admin_tools.cliente:
         // muchas facturas suelen tener pocos clientes distintos.
         Map<Integer, String> nameCache = new ConcurrentHashMap<>();
-        return headers.map(h -> toResponse(h, loadLines(h.getNumeroFactura()), tenant, nameCache));
+        Map<Integer, DatosFactura> rangoCache = new ConcurrentHashMap<>();
+        // search() no arma el bloque crédito (no consulta CxC por fila).
+        return headers.map(h -> toResponse(h, loadLines(h.getNumeroFactura()), tenant, nameCache, rangoCache, null));
     }
 
     // ============================================================
@@ -481,9 +487,12 @@ public class InvoiceService {
         h.setTipoPago(1);
         h.setObservacion(orden.getObservacion() == null || orden.getObservacion().isBlank()
                 ? "NA" : orden.getObservacion());
-        h.setTotalLetras("NA");             // NumberToLetter: mejora futura
+        h.setTotalLetras(totalEnLetras(nz(orden.getTotal())));
         h.setCodigoVendedor(orden.getVendedorCod());
-        h.setCodRango(1);
+        // US-040: rango/CAI activo de la caja (no hardcode 1) para que la
+        // venta desde orden también quede fiscal, igual que createDirect.
+        h.setCodRango(datosFacturaCRUD.findTopByOrderByCodigoRangoDesc()
+                .map(DatosFactura::getCodigoRango).orElse(1));
         h.setCobroTarjeta(BigDecimal.ZERO);
         if (credito) {
             // venta a credito: nada cobrado al facturar; queda pendiente y con
@@ -523,7 +532,24 @@ public class InvoiceService {
         EncabezadoFactura header = encabezadoFacturaCRUD.findById(invoiceId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Factura " + invoiceId + " no existe en tenant " + tenant));
-        return toResponse(header, loadLines(invoiceId), tenant, new ConcurrentHashMap<>());
+        return toResponse(header, loadLines(invoiceId), tenant,
+                new ConcurrentHashMap<>(), new ConcurrentHashMap<>(), buildCredito(header, tenant));
+    }
+
+    /**
+     * US-040 — bloque de crédito para el ticket "FACTURA A CRÉDITO". Solo para
+     * facturas a crédito (tipo 2); null en contado. saldo/abono desde CxC (si la
+     * factura no tiene cuenta aún → saldo=total, abono=0).
+     */
+    private CreditoInfo buildCredito(EncabezadoFactura h, String tenant) {
+        if (h.getTipoFactura() == null || h.getTipoFactura() != 2) return null;
+        int codigoCaja = cajaCRUD.findByNombreDb(tenant).map(c -> c.getCodigo()).orElse(0);
+        AccountsReceivableService.Balance bal =
+                accountsReceivableService.getInvoiceBalance(codigoCaja, h.getNumeroFactura());
+        BigDecimal saldo = bal != null ? bal.saldo() : nz(h.getTotal());
+        BigDecimal abono = bal != null ? bal.abono() : BigDecimal.ZERO;
+        Integer interes = configAppCRUD.findInteresFacturasVenc().orElse(0);
+        return new CreditoInfo(h.getFechaVencimiento(), saldo, abono, interes);
     }
 
     private List<DetalleFactura> loadLines(Integer numeroFactura) {
@@ -533,7 +559,9 @@ public class InvoiceService {
     private InvoiceResponse toResponse(EncabezadoFactura h,
                                        List<DetalleFactura> lines,
                                        String tenant,
-                                       Map<Integer, String> nameCache) {
+                                       Map<Integer, String> nameCache,
+                                       Map<Integer, DatosFactura> rangoCache,
+                                       CreditoInfo credito) {
         Integer customerId = parseIntOrNull(h.getCodigoCliente());
         String customerName = customerId == null ? null
                 : nameCache.computeIfAbsent(customerId, this::lookupCustomerName);
@@ -567,7 +595,28 @@ public class InvoiceService {
                 h.getTotal(),
                 h.getPago(),
                 h.getObservacion(),
-                lineResponses);
+                h.getTotalLetras(),
+                lineResponses,
+                buildFiscal(h, rangoCache),
+                credito);
+    }
+
+    /**
+     * US-040: arma el bloque fiscal (CAI/rango/número fiscal) desde el rango
+     * autorizado de la caja (datos_factura) enlazado por cod_rango. Cachea por
+     * codigo_rango (suele ser uno solo). Si no hay rango → CAI 'NA' (degrada).
+     */
+    private FiscalInfo buildFiscal(EncabezadoFactura h, Map<Integer, DatosFactura> rangoCache) {
+        Integer cr = h.getCodRango();
+        int numero = h.getNumeroFactura() != null ? h.getNumeroFactura() : 0;
+        DatosFactura d = cr == null ? null
+                : rangoCache.computeIfAbsent(cr, k -> datosFacturaCRUD.findById(k).orElse(null));
+        if (d == null) {
+            return FiscalInfo.build(null, null, null, null, null, null, numero);
+        }
+        return FiscalInfo.build(d.getCodigoTipoFacturacion(), d.getCai(),
+                d.getFacturaInicial(), d.getFacturaFinal(), d.getFechaLimiteEmision(),
+                d.getObservacion(), numero);
     }
 
     private String lookupCustomerName(Integer customerId) {
@@ -582,5 +631,19 @@ public class InvoiceService {
 
     private static BigDecimal nz(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;
+    }
+
+    /**
+     * US-040: "total en letras" idéntico al Swing (NumberToLetterConverter),
+     * para poblar encabezado_factura.total_letras al crear la factura. Ante
+     * cualquier error (fuera de rango, etc.) cae a "NA" — el ticket lo omite.
+     */
+    private static String totalEnLetras(BigDecimal total) {
+        try {
+            double v = nz(total).setScale(2, java.math.RoundingMode.HALF_UP).doubleValue();
+            return NumberToLetterConverter.convertNumberToLetter(v);
+        } catch (RuntimeException e) {
+            return "NA";
+        }
     }
 }
