@@ -36,6 +36,13 @@ dependencies {
     // US-033: @WithMockUser para probar @PreAuthorize en los slices @WebMvcTest
     testImplementation 'org.springframework.security:spring-security-test'
     implementation group: 'mysql', name: 'mysql-connector-java', version: '8.0.33'
+
+    // US-101: Flyway embebido SOLO para provisionar la BD de una caja nueva
+    // (POST /cajas replica SchemaMigrator.migrateNewCajaDatabase del Swing).
+    // La auto-config queda apagada (spring.flyway.enabled=false); el dueño de
+    // las migraciones en runtime normal sigue siendo el Swing.
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-mysql'
     implementation 'org.mapstruct:mapstruct:1.5.5.Final'
     annotationProcessor 'org.mapstruct:mapstruct-processor:1.5.5.Final'
 
