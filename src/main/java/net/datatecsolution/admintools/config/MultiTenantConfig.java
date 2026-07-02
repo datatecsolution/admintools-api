@@ -117,13 +117,23 @@ public class MultiTenantConfig {
             log.warn("admin_tools.cajas esta vacio — no hay tenants. Multi-tenant operativo pero sin destinos.");
         }
 
-        routing.setTargetDataSources(targets);
+        routing.setInitialTargets(targets);
         // Fallback cuando TenantContext esta vacio: caemos al commonDS para no
         // explotar. La logica de "este endpoint requiere caja" la enforce el
         // service de facturacion (INV-8).
         routing.setDefaultTargetDataSource(commonDS);
         routing.afterPropertiesSet();
         return routing;
+    }
+
+    /**
+     * US-101 — alta en caliente de la BD de una caja recien provisionada
+     * (POST /cajas) + datos de conexion por-caja para el Flyway del provisioner.
+     */
+    @Bean
+    public TenantRegistry tenantRegistry(@Qualifier("tenantRoutingDataSource") DataSource routing) {
+        return new TenantRegistry((TenantRoutingDataSource) routing, this::buildCajaDataSource,
+                tenantUrlPrefix, tenantUrlSuffix, tenantUsername, tenantPassword);
     }
 
     private HikariDataSource buildCajaDataSource(String nombreDb) {
