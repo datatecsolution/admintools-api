@@ -52,6 +52,8 @@ class FiscalRangeServiceTest {
         caja.setCodigo(2);
         caja.setNombreDb(DB);
         lenient().when(cajaCRUD.findById(2)).thenReturn(Optional.of(caja));
+        // list/get/delete resuelven el último número emitido para calcular usadas
+        lenient().when(jdbc.queryForObject(contains("MAX(numero_factura)"), eq(Integer.class))).thenReturn(1000);
         return new FiscalRangeService(jdbc, cajaCRUD);
     }
 
@@ -62,7 +64,7 @@ class FiscalRangeServiceTest {
 
     private FiscalRangeResponse row(int id, boolean enUso) {
         return new FiscalRangeResponse(id, "CAI-123", 1001, 2000, "000-001-01-",
-                1000, LocalDate.of(2027, 1, 31), "", enUso);
+                1000, LocalDate.of(2027, 1, 31), "", 0L, enUso);
     }
 
     @Test

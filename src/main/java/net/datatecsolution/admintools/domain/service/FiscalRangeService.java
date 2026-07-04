@@ -58,7 +58,7 @@ public class FiscalRangeService {
 
     public List<FiscalRangeResponse> list(int cajaId) {
         String db = resolveDb(cajaId);
-        return jdbc.query(selectSql(db) + " ORDER BY df.codigo_rango DESC", rowMapper());
+        return jdbc.query(selectSql(db) + " ORDER BY df.codigo_rango DESC", rowMapper(ultimoNumero(db)));
     }
 
     public FiscalRangeResponse get(int cajaId, int rangeId) {
@@ -132,11 +132,16 @@ public class FiscalRangeService {
         }
     }
 
-    /** Espejo de verificarFacturacionFactInicial: no pisar numeración ya emitida. */
-    private void checkFacturaInicial(String db, int facturaInicial) {
+    /** Último número emitido en la caja (0 si nunca facturó). */
+    private int ultimoNumero(String db) {
         Integer max = jdbc.queryForObject(
                 "SELECT COALESCE(MAX(numero_factura), 0) FROM " + db + ".encabezado_factura", Integer.class);
-        int ultimo = max == null ? 0 : max;
+        return max == null ? 0 : max;
+    }
+
+    /** Espejo de verificarFacturacionFactInicial: no pisar numeración ya emitida. */
+    private void checkFacturaInicial(String db, int facturaInicial) {
+        int ultimo = ultimoNumero(db);
         if (facturaInicial <= ultimo) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "El número de factura inicial (" + facturaInicial
@@ -151,7 +156,7 @@ public class FiscalRangeService {
 
     private FiscalRangeResponse requireRange(String db, int rangeId) {
         List<FiscalRangeResponse> found = jdbc.query(
-                selectSql(db) + " WHERE df.codigo_rango = ?", rowMapper(), rangeId);
+                selectSql(db) + " WHERE df.codigo_rango = ?", rowMapper(ultimoNumero(db)), rangeId);
         if (found.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "No existe el rango " + rangeId + " en la caja");
@@ -168,18 +173,33 @@ public class FiscalRangeService {
                 + " FROM " + db + ".datos_factura df";
     }
 
-    private RowMapper<FiscalRangeResponse> rowMapper() {
-        return (rs, i) -> new FiscalRangeResponse(
-                rs.getInt("codigo_rango"),
-                rs.getString("CAI"),
-                parseIntOrZero(rs.getString("factura_inicial")),
-                parseIntOrZero(rs.getString("factura_final")),
-                rs.getString("codigo_tipo_facturacion"),
-                rs.getInt("cantida_solicitada"),
-                rs.getDate("fecha_limite_emision") == null
-                        ? null : rs.getDate("fecha_limite_emision").toLocalDate(),
-                rs.getString("observacion"),
-                rs.getBoolean("en_uso"));
+    private RowMapper<FiscalRangeResponse> rowMapper(int ultimoNumero) {
+        return (rs, i) -> {
+            Integer inicial = parseIntOrZero(rs.getString("factura_inicial"));
+            Integer fin = parseIntOrZero(rs.getString("factura_final"));
+            return new FiscalRangeResponse(
+                    rs.getInt("codigo_rango"),
+                    rs.getString("CAI"),
+                    inicial,
+                    fin,
+                    rs.getString("codigo_tipo_facturacion"),
+                    rs.getInt("cantida_solicitada"),
+                    rs.getDate("fecha_limite_emision") == null
+                            ? null : rs.getDate("fecha_limite_emision").toLocalDate(),
+                    rs.getString("observacion"),
+                    usadas(inicial, fin, ultimoNumero),
+                    rs.getBoolean("en_uso"));
+        };
+    }
+
+    /**
+     * Números CONSUMIDOS del rango: el último numero_factura de la caja
+     * clampeado contra [inicial, final]. 0 para rangos futuros o legacy
+     * sin numeración (inicial 'NA'→0).
+     */
+    private static long usadas(int inicial, int fin, int ultimoNumero) {
+        if (inicial <= 0 || fin < inicial) return 0;
+        return Math.max(0L, (long) Math.min(fin, ultimoNumero) - inicial + 1);
     }
 
     /** factura_inicial/final son varchar(11) legacy con default 'NA'. */

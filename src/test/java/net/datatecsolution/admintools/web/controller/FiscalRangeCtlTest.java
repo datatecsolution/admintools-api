@@ -46,7 +46,7 @@ class FiscalRangeCtlTest {
 
     private FiscalRangeResponse range() {
         return new FiscalRangeResponse(7, "CAI-ABC-123", 1001, 2000, "000-001-01-",
-                1000, LocalDate.of(2027, 1, 31), "Principal", false);
+                1000, LocalDate.of(2027, 1, 31), "Principal", 340L, false);
     }
 
     private FiscalRangeRequest validRequest() {
@@ -62,6 +62,7 @@ class FiscalRangeCtlTest {
         mockMvc.perform(get("/cajas/2/fiscal-ranges"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].cai").value("CAI-ABC-123"))
+                .andExpect(jsonPath("$[0].usadas").value(340))
                 .andExpect(jsonPath("$[0].enUso").value(false));
     }
 
