@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import net.datatecsolution.admintools.config.JwtUtil;
 import net.datatecsolution.admintools.domain.dto.FiscalRangeRequest;
 import net.datatecsolution.admintools.domain.dto.FiscalRangeResponse;
+import net.datatecsolution.admintools.domain.dto.FiscalRangesResponse;
 import net.datatecsolution.admintools.domain.service.CustomUserDetailsService;
 import net.datatecsolution.admintools.domain.service.FiscalRangeService;
 import org.junit.jupiter.api.Test;
@@ -46,7 +47,7 @@ class FiscalRangeCtlTest {
 
     private FiscalRangeResponse range() {
         return new FiscalRangeResponse(7, "CAI-ABC-123", 1001, 2000, "000-001-01-",
-                1000, LocalDate.of(2027, 1, 31), "Principal", false);
+                1000, LocalDate.of(2027, 1, 31), "Principal", 340L, false);
     }
 
     private FiscalRangeRequest validRequest() {
@@ -56,13 +57,15 @@ class FiscalRangeCtlTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void list_retorna200() throws Exception {
-        when(service.list(2)).thenReturn(List.of(range()));
+    void list_retorna200ConUltimoNumero() throws Exception {
+        when(service.list(2)).thenReturn(new FiscalRangesResponse(1340, List.of(range())));
 
         mockMvc.perform(get("/cajas/2/fiscal-ranges"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].cai").value("CAI-ABC-123"))
-                .andExpect(jsonPath("$[0].enUso").value(false));
+                .andExpect(jsonPath("$.ultimoNumero").value(1340))
+                .andExpect(jsonPath("$.ranges[0].cai").value("CAI-ABC-123"))
+                .andExpect(jsonPath("$.ranges[0].usadas").value(340))
+                .andExpect(jsonPath("$.ranges[0].enUso").value(false));
     }
 
     @Test

@@ -52,6 +52,8 @@ class FiscalRangeServiceTest {
         caja.setCodigo(2);
         caja.setNombreDb(DB);
         lenient().when(cajaCRUD.findById(2)).thenReturn(Optional.of(caja));
+        // list/get/delete resuelven el último número emitido para calcular usadas
+        lenient().when(jdbc.queryForObject(contains("MAX(numero_factura)"), eq(Integer.class))).thenReturn(1000);
         return new FiscalRangeService(jdbc, cajaCRUD);
     }
 
@@ -62,19 +64,62 @@ class FiscalRangeServiceTest {
 
     private FiscalRangeResponse row(int id, boolean enUso) {
         return new FiscalRangeResponse(id, "CAI-123", 1001, 2000, "000-001-01-",
-                1000, LocalDate.of(2027, 1, 31), "", enUso);
+                1000, LocalDate.of(2027, 1, 31), "", 0L, enUso);
+    }
+
+    /** stub del SELECT de rangos existentes para el chequeo de solape */
+    @SuppressWarnings("unchecked")
+    private void stubRangosExistentes(int[]... rangos) {
+        when(jdbc.query(contains("SELECT codigo_rango, factura_inicial, factura_final"),
+                any(RowMapper.class))).thenReturn(List.of((Object[]) rangos));
     }
 
     @Test
-    void create_inicialMenorAlUltimoEmitido_409() {
+    void create_solapaConOtroRango_409() {
         FiscalRangeService svc = service();
-        when(jdbc.queryForObject(contains("MAX(numero_factura)"), eq(Integer.class))).thenReturn(500);
+        // rango existente #3: 1000–1999; el nuevo 1500–2500 lo pisa
+        stubRangosExistentes(new int[]{3, 1000, 1999});
 
-        assertThatThrownBy(() -> svc.create(2, request(500, 1500)))
+        assertThatThrownBy(() -> svc.create(2, request(1500, 2500)))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.CONFLICT);
 
+        verify(jdbc, never()).execute(anyString());
+    }
+
+    @Test
+    void update_solapaConOtroRango_409_peroIgnoraElPropio() {
+        FiscalRangeService svc = service();
+        when(jdbc.query(anyString(), any(RowMapper.class), eq(7))).thenReturn(List.of(row(7, false)));
+        // el propio rango (#7) se excluye del chequeo; #3 sí choca
+        stubRangosExistentes(new int[]{7, 1001, 2000}, new int[]{3, 2500, 3000});
+
+        assertThatThrownBy(() -> svc.update(2, 7, request(1001, 2600)))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void create_sobrepaso_inicialBajoElUltimoEmitido_permiteSinTocarNumeracion() {
+        FiscalRangeService svc = service();
+        // cliente ya emitió hasta 2100; el ente autoriza 2000–2999 (sin solape con 1000–1999)
+        stubRangosExistentes(new int[]{3, 1000, 1999});
+        when(jdbc.queryForObject(contains("MAX(numero_factura)"), eq(Integer.class))).thenReturn(2100);
+        when(jdbc.update(any(PreparedStatementCreator.class), any(KeyHolder.class))).thenAnswer(inv -> {
+            KeyHolder kh = inv.getArgument(1);
+            Map<String, Object> key = new HashMap<>();
+            key.put("GENERATED_KEY", 8);
+            kh.getKeyList().add(key);
+            return 1;
+        });
+        when(jdbc.query(anyString(), any(RowMapper.class), eq(8))).thenReturn(List.of(row(8, false)));
+
+        FiscalRangeResponse resp = svc.create(2, request(2000, 2999));
+
+        assertThat(resp.id()).isEqualTo(8);
+        // la secuencia CONTINÚA donde está: no se reposiciona el AUTO_INCREMENT
         verify(jdbc, never()).execute(anyString());
     }
 
@@ -91,6 +136,7 @@ class FiscalRangeServiceTest {
     @Test
     void create_ok_insertaYReposicionaAutoIncrement() {
         FiscalRangeService svc = service();
+        stubRangosExistentes();
         when(jdbc.queryForObject(contains("MAX(numero_factura)"), eq(Integer.class))).thenReturn(1000);
         when(jdbc.update(any(PreparedStatementCreator.class), any(KeyHolder.class))).thenAnswer(inv -> {
             KeyHolder kh = inv.getArgument(1);
@@ -110,6 +156,7 @@ class FiscalRangeServiceTest {
     @Test
     void update_ok_reaplicaAutoIncrement() {
         FiscalRangeService svc = service();
+        stubRangosExistentes();
         when(jdbc.query(anyString(), any(RowMapper.class), eq(7))).thenReturn(List.of(row(7, false)));
         when(jdbc.queryForObject(contains("MAX(numero_factura)"), eq(Integer.class))).thenReturn(1000);
         when(jdbc.update(anyString(), any(), any(), any(), any(), any(), any(), any(), anyInt()))

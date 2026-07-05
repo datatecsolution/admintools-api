@@ -2,6 +2,7 @@ package net.datatecsolution.admintools.domain.service;
 
 import net.datatecsolution.admintools.domain.dto.FiscalRangeRequest;
 import net.datatecsolution.admintools.domain.dto.FiscalRangeResponse;
+import net.datatecsolution.admintools.domain.dto.FiscalRangesResponse;
 import net.datatecsolution.admintools.persistence.crud.CajaCRUD;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -27,13 +28,19 @@ import java.util.regex.Pattern;
  * DataSource común (patrón InvoiceAdminQueryService) porque el admin elige
  * la caja en la UI — no depende del tenant de la sesión.
  *
- * Guardas del Swing:
- *  - crear/actualizar: factura_inicial > MAX(numero_factura) emitido en la
- *    caja (verificarFacturacionFactInicial) → 409 si no.
- *  - crear/actualizar: tras persistir, ALTER TABLE encabezado_factura
- *    AUTO_INCREMENT = factura_inicial (setNumeroFact) — es lo que hace que
- *    la próxima factura arranque el rango. Seguro: la guarda garantiza que
- *    el valor es mayor al máximo actual.
+ * Guardas (evolución de las del Swing, decisión de negocio 2026-07-05):
+ *  - crear/actualizar: el rango NO debe SOLAPARSE con otro rango de la misma
+ *    caja → 409. (Reemplaza al verificarFacturacionFactInicial del Swing,
+ *    que comparaba contra el MAX(numero_factura) emitido y bloqueaba el
+ *    escenario real de sobrepaso: el cliente se pasa del límite y el ente
+ *    regulador le autoriza el rango nuevo DESDE el último autorizado, que
+ *    queda por debajo de lo ya emitido.)
+ *  - crear/actualizar: la numeración es CONDICIONAL — si factura_inicial >
+ *    último numero_factura emitido, ALTER TABLE encabezado_factura
+ *    AUTO_INCREMENT = factura_inicial (setNumeroFact, arranca el rango); si
+ *    NO (sobrepaso), no se toca: la secuencia continúa donde está y las
+ *    facturas ya emitidas conservan su rango anterior. La UI se lo explica
+ *    al usuario con el ultimoNumero de FiscalRangesResponse.
  *  - eliminar: solo si ninguna factura usa el cod_rango
  *    (verificarFacturacionEliminacion) → 409 si está en uso.
  */
@@ -56,9 +63,11 @@ public class FiscalRangeService {
         this.cajaCRUD = cajaCRUD;
     }
 
-    public List<FiscalRangeResponse> list(int cajaId) {
+    public FiscalRangesResponse list(int cajaId) {
         String db = resolveDb(cajaId);
-        return jdbc.query(selectSql(db) + " ORDER BY df.codigo_rango DESC", rowMapper());
+        int ultimo = ultimoNumero(db);
+        return new FiscalRangesResponse(ultimo,
+                jdbc.query(selectSql(db) + " ORDER BY df.codigo_rango DESC", rowMapper(ultimo)));
     }
 
     public FiscalRangeResponse get(int cajaId, int rangeId) {
@@ -69,7 +78,7 @@ public class FiscalRangeService {
     public FiscalRangeResponse create(int cajaId, FiscalRangeRequest request) {
         String db = resolveDb(cajaId);
         validate(request);
-        checkFacturaInicial(db, request.facturaInicial());
+        checkNoOverlap(db, request.facturaInicial(), request.facturaFinal(), null);
 
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(conn -> {
@@ -98,7 +107,7 @@ public class FiscalRangeService {
         String db = resolveDb(cajaId);
         requireRange(db, rangeId);
         validate(request);
-        checkFacturaInicial(db, request.facturaInicial());
+        checkNoOverlap(db, request.facturaInicial(), request.facturaFinal(), rangeId);
 
         jdbc.update("UPDATE " + db + ".datos_factura SET CAI=?, factura_inicial=?, factura_final=?,"
                         + " codigo_tipo_facturacion=?, cantida_solicitada=?, fecha_limite_emision=?,"
@@ -132,26 +141,53 @@ public class FiscalRangeService {
         }
     }
 
-    /** Espejo de verificarFacturacionFactInicial: no pisar numeración ya emitida. */
-    private void checkFacturaInicial(String db, int facturaInicial) {
+    /** Último número emitido en la caja (0 si nunca facturó). */
+    private int ultimoNumero(String db) {
         Integer max = jdbc.queryForObject(
                 "SELECT COALESCE(MAX(numero_factura), 0) FROM " + db + ".encabezado_factura", Integer.class);
-        int ultimo = max == null ? 0 : max;
-        if (facturaInicial <= ultimo) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "El número de factura inicial (" + facturaInicial
-                            + ") debe ser mayor al último número emitido en la caja (" + ultimo + ")");
+        return max == null ? 0 : max;
+    }
+
+    /**
+     * El rango [inicial, final] no debe solaparse con otro rango de la caja.
+     * Los rangos legacy sin numeración parseable (inicial 'NA'→0) se ignoran.
+     */
+    private void checkNoOverlap(String db, int inicial, int fin, Integer excludeRangeId) {
+        List<int[]> existentes = jdbc.query(
+                "SELECT codigo_rango, factura_inicial, factura_final FROM " + db + ".datos_factura",
+                (rs, i) -> new int[]{
+                        rs.getInt("codigo_rango"),
+                        parseIntOrZero(rs.getString("factura_inicial")),
+                        parseIntOrZero(rs.getString("factura_final"))});
+        for (int[] r : existentes) {
+            if (excludeRangeId != null && r[0] == excludeRangeId) continue;
+            if (r[1] <= 0) continue;
+            boolean overlap = inicial <= r[2] && fin >= r[1];
+            if (overlap) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "El rango " + inicial + "–" + fin + " choca con el rango #" + r[0]
+                                + " (" + r[1] + "–" + r[2] + ") de esta caja");
+            }
         }
     }
 
-    /** Espejo de setNumeroFact: la próxima factura de la caja arranca el rango. */
+    /**
+     * Numeración condicional (espejo de setNumeroFact SOLO cuando corresponde):
+     * si el rango arranca por encima de lo emitido, la próxima factura salta a
+     * factura_inicial. Si el cliente YA se pasó (sobrepaso), no se toca nada:
+     * la secuencia continúa donde está y las emitidas conservan su rango.
+     * (InnoDB además ignora un AUTO_INCREMENT menor al máximo — no ejecutarlo
+     * hace la intención explícita.)
+     */
     private void setNumeroFactura(String db, int facturaInicial) {
-        jdbc.execute("ALTER TABLE " + db + ".encabezado_factura AUTO_INCREMENT = " + facturaInicial);
+        if (facturaInicial > ultimoNumero(db)) {
+            jdbc.execute("ALTER TABLE " + db + ".encabezado_factura AUTO_INCREMENT = " + facturaInicial);
+        }
     }
 
     private FiscalRangeResponse requireRange(String db, int rangeId) {
         List<FiscalRangeResponse> found = jdbc.query(
-                selectSql(db) + " WHERE df.codigo_rango = ?", rowMapper(), rangeId);
+                selectSql(db) + " WHERE df.codigo_rango = ?", rowMapper(ultimoNumero(db)), rangeId);
         if (found.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "No existe el rango " + rangeId + " en la caja");
@@ -168,18 +204,33 @@ public class FiscalRangeService {
                 + " FROM " + db + ".datos_factura df";
     }
 
-    private RowMapper<FiscalRangeResponse> rowMapper() {
-        return (rs, i) -> new FiscalRangeResponse(
-                rs.getInt("codigo_rango"),
-                rs.getString("CAI"),
-                parseIntOrZero(rs.getString("factura_inicial")),
-                parseIntOrZero(rs.getString("factura_final")),
-                rs.getString("codigo_tipo_facturacion"),
-                rs.getInt("cantida_solicitada"),
-                rs.getDate("fecha_limite_emision") == null
-                        ? null : rs.getDate("fecha_limite_emision").toLocalDate(),
-                rs.getString("observacion"),
-                rs.getBoolean("en_uso"));
+    private RowMapper<FiscalRangeResponse> rowMapper(int ultimoNumero) {
+        return (rs, i) -> {
+            Integer inicial = parseIntOrZero(rs.getString("factura_inicial"));
+            Integer fin = parseIntOrZero(rs.getString("factura_final"));
+            return new FiscalRangeResponse(
+                    rs.getInt("codigo_rango"),
+                    rs.getString("CAI"),
+                    inicial,
+                    fin,
+                    rs.getString("codigo_tipo_facturacion"),
+                    rs.getInt("cantida_solicitada"),
+                    rs.getDate("fecha_limite_emision") == null
+                            ? null : rs.getDate("fecha_limite_emision").toLocalDate(),
+                    rs.getString("observacion"),
+                    usadas(inicial, fin, ultimoNumero),
+                    rs.getBoolean("en_uso"));
+        };
+    }
+
+    /**
+     * Números CONSUMIDOS del rango: el último numero_factura de la caja
+     * clampeado contra [inicial, final]. 0 para rangos futuros o legacy
+     * sin numeración (inicial 'NA'→0).
+     */
+    private static long usadas(int inicial, int fin, int ultimoNumero) {
+        if (inicial <= 0 || fin < inicial) return 0;
+        return Math.max(0L, (long) Math.min(fin, ultimoNumero) - inicial + 1);
     }
 
     /** factura_inicial/final son varchar(11) legacy con default 'NA'. */
