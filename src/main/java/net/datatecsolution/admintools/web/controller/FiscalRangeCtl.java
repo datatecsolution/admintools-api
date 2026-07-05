@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import net.datatecsolution.admintools.domain.dto.FiscalRangeRequest;
 import net.datatecsolution.admintools.domain.dto.FiscalRangeResponse;
+import net.datatecsolution.admintools.domain.dto.FiscalRangesResponse;
 import net.datatecsolution.admintools.domain.service.FiscalRangeService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -39,8 +40,8 @@ public class FiscalRangeCtl {
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Lista los rangos fiscales (datos_factura) de la caja")
-    public ResponseEntity<List<FiscalRangeResponse>> list(@PathVariable int cajaId) {
+    @Operation(summary = "Rangos fiscales (datos_factura) de la caja + último número emitido")
+    public ResponseEntity<FiscalRangesResponse> list(@PathVariable int cajaId) {
         return ResponseEntity.ok(service.list(cajaId));
     }
 
