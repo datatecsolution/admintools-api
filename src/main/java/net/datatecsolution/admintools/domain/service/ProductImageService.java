@@ -15,6 +15,7 @@ import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Optional;
@@ -36,6 +37,10 @@ public class ProductImageService {
             Set.of("image/jpeg", "image/png", "image/webp");
     private static final long MAX_BYTES = 5L * 1024 * 1024;
     private static final int MEDIUM_MAX = 600;
+    // Miniatura para el POS (grilla/catálogo/ticket): el POS la renderiza en
+    // ≤80px; 160px cubre pantallas retina y pesa ~6× menos que la medium —
+    // clave para conexiones lentas (primer render del catálogo).
+    private static final int THUMB_MAX = 160;
 
     private final ArticuloImagenCRUD imagenCRUD;
     private final ArticuloMasterCRUD productCRUD;
@@ -86,6 +91,27 @@ public class ProductImageService {
 
     public Optional<ArticuloImagen> get(int productId) {
         return imagenCRUD.findFirstByCodigoArticuloOrderByIdImgDesc(productId);
+    }
+
+    /**
+     * Miniatura (~160px) generada al vuelo desde el blob medium (600px). No se
+     * almacena aparte: el GET la sirve con caché inmutable, así que se genera a
+     * lo sumo una vez por terminal. Si el blob no decodifica, devuelve el
+     * original (degradación segura). El resize 600→160px es barato (µs-ms).
+     */
+    public byte[] thumbnail(byte[] mediumJpeg) {
+        if (mediumJpeg == null) {
+            return null;
+        }
+        try {
+            BufferedImage src = ImageIO.read(new ByteArrayInputStream(mediumJpeg));
+            if (src == null) {
+                return mediumJpeg;
+            }
+            return toJpegBytes(resize(src, THUMB_MAX));
+        } catch (IOException e) {
+            return mediumJpeg;
+        }
     }
 
     @Transactional

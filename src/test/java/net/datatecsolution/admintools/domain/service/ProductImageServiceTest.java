@@ -106,6 +106,27 @@ class ProductImageServiceTest {
     }
 
     @Test
+    void thumbnail_recomprimeA160pxYMasChico() throws Exception {
+        ProductImageService svc = service();
+        byte[] medium = png(600, 400);
+
+        byte[] thumb = svc.thumbnail(medium);
+
+        BufferedImage out = ImageIO.read(new ByteArrayInputStream(thumb));
+        assertThat(out.getWidth()).isEqualTo(160);   // lado mayor clampeado
+        assertThat(out.getHeight()).isEqualTo(107);  // aspect ratio preservado
+        assertThat(thumb.length).isLessThan(medium.length);
+    }
+
+    @Test
+    void thumbnail_blobIlegible_devuelveElOriginal() {
+        ProductImageService svc = service();
+        byte[] noEsImagen = {1, 2, 3, 4};
+
+        assertThat(svc.thumbnail(noEsImagen)).isEqualTo(noEsImagen);
+    }
+
+    @Test
     void delete_borraLasFilasDelProducto() {
         ProductImageService svc = service();
 

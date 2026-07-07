@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -49,20 +50,28 @@ public class ProductImageCtl {
     }
 
     @GetMapping
-    @Operation(summary = "Imagen del producto (pública, caché inmutable + ETag)")
+    @Operation(summary = "Imagen del producto (pública, caché inmutable + ETag). ?size=thumb sirve una miniatura ~160px para el POS.")
     public ResponseEntity<byte[]> get(@PathVariable int productId,
+                                      @RequestParam(value = "size", required = false) String size,
                                       @RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        boolean thumb = "thumb".equalsIgnoreCase(size);
         return service.get(productId)
                 .map(img -> {
-                    String etag = "\"" + img.getIdImg() + "\"";
+                    // ETag distinto por variante (…-t) para que el 304 no
+                    // confunda medium con miniatura.
+                    String etag = "\"" + img.getIdImg() + (thumb ? "-t" : "") + "\"";
                     if (etag.equals(ifNoneMatch)) {
                         return ResponseEntity.status(HttpStatus.NOT_MODIFIED).eTag(etag).<byte[]>build();
                     }
+                    byte[] body = thumb ? service.thumbnail(img.getImg()) : img.getImg();
+                    // La miniatura siempre es JPEG (recomprimida); la medium
+                    // respeta la extensión guardada.
+                    MediaType ct = thumb ? MediaType.IMAGE_JPEG : contentType(img);
                     return ResponseEntity.ok()
                             .eTag(etag)
                             .cacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable())
-                            .contentType(contentType(img))
-                            .body(img.getImg());
+                            .contentType(ct)
+                            .body(body);
                 })
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }

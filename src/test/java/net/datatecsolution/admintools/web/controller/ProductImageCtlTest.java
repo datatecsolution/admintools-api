@@ -77,6 +77,19 @@ class ProductImageCtlTest {
 
     @Test
     @WithMockUser
+    void get_conSizeThumb_devuelveMiniaturaConEtagVariante() throws Exception {
+        when(service.get(7)).thenReturn(Optional.of(imagen()));
+        when(service.thumbnail(any())).thenReturn(new byte[]{9, 9});
+
+        mockMvc.perform(get("/products/7/image").param("size", "thumb"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("ETag", "\"41-t\""))
+                .andExpect(content().contentType("image/jpeg"))
+                .andExpect(content().bytes(new byte[]{9, 9}));
+    }
+
+    @Test
+    @WithMockUser
     void get_conIfNoneMatchCoincidente_304() throws Exception {
         when(service.get(7)).thenReturn(Optional.of(imagen()));
 
