@@ -141,6 +141,12 @@ public class SecurityConfig {
                                                                 "/favicon.ico")
                                                 .permitAll()
 
+                                                // 3b. Imagen de producto (US-079): los <img src> del POS no
+                                                // mandan JWT — solo el GET es público; POST/DELETE llevan
+                                                // @PreAuthorize(ADMIN) en el controller.
+                                                .requestMatchers(HttpMethod.GET, "/products/*/image")
+                                                .permitAll()
+
                                                 // 4. OpenAPI / Swagger UI publicos (documentacion + try-it-out)
                                                 .requestMatchers(
                                                                 "/swagger-ui/**",

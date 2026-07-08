@@ -93,7 +93,10 @@ public class ProductMasterService {
         // Códigos de barra en bloque (una query por página).
         Map<Integer, List<String>> barcodes = barcodesByProduct(
                 result.getContent().stream().map(ArticuloMaster::getCodigoArticulo).toList());
-        return result.map(e -> conPrecioPublico(mapper.toResponse(e), e, publico, barcodes));
+        // Versión de imagen en bloque (US-079; solo el id_img, el blob nunca viaja acá).
+        Map<Integer, Integer> images = imagesByProduct(
+                result.getContent().stream().map(ArticuloMaster::getCodigoArticulo).toList());
+        return result.map(e -> conPrecioPublico(mapper.toResponse(e), e, publico, barcodes, images));
     }
 
     private Map<Integer, BigDecimal> preciosPublicoGeneral(List<ArticuloMaster> items) {
@@ -131,9 +134,29 @@ public class ProductMasterService {
         return barcodesByProduct(List.of(id)).getOrDefault(id, List.of());
     }
 
+    /** Carga en bloque el id_img vigente por artículo (US-079). */
+    private Map<Integer, Integer> imagesByProduct(List<Integer> ids) {
+        Map<Integer, Integer> map = new HashMap<>();
+        if (ids == null || ids.isEmpty()) {
+            return map;
+        }
+        String in = ids.stream().map(x -> "?").collect(Collectors.joining(","));
+        jdbc.query("SELECT codigo_articulo, MAX(id_img) AS id_img FROM articulo_imagen "
+                        + "WHERE codigo_articulo IN (" + in + ") GROUP BY codigo_articulo",
+                rs -> {
+                    map.put(rs.getInt("codigo_articulo"), rs.getInt("id_img"));
+                }, ids.toArray());
+        return map;
+    }
+
+    private Integer imageVersionOf(int id) {
+        return imagesByProduct(List.of(id)).get(id);
+    }
+
     private ProductResponse conPrecioPublico(ProductResponse r, ArticuloMaster e,
                                              Map<Integer, BigDecimal> publico,
-                                             Map<Integer, List<String>> barcodes) {
+                                             Map<Integer, List<String>> barcodes,
+                                             Map<Integer, Integer> images) {
         BigDecimal price = publico.get(e.getCodigoArticulo());
         if (price == null) {
             // fallback: legacy precio_articulo si el producto no tiene precio público asignado
@@ -141,12 +164,13 @@ public class ProductMasterService {
         }
         return new ProductResponse(r.id(), r.name(), price, r.categoryId(),
                 r.taxId(), r.altCode(), r.type(), r.active(),
-                barcodes.getOrDefault(e.getCodigoArticulo(), List.of()));
+                barcodes.getOrDefault(e.getCodigoArticulo(), List.of()),
+                images.get(e.getCodigoArticulo()));
     }
 
-    private ProductResponse withBarcodes(ProductResponse r, List<String> barcodes) {
+    private ProductResponse withBarcodes(ProductResponse r, List<String> barcodes, Integer imageVersion) {
         return new ProductResponse(r.id(), r.name(), r.price(), r.categoryId(),
-                r.taxId(), r.altCode(), r.type(), r.active(), barcodes);
+                r.taxId(), r.altCode(), r.type(), r.active(), barcodes, imageVersion);
     }
 
     @Transactional
@@ -154,7 +178,8 @@ public class ProductMasterService {
         ArticuloMaster entity = mapper.toEntity(request);
         ArticuloMaster saved = crud.save(entity);
         syncBarcodes(saved.getCodigoArticulo(), request.barcodes());
-        return withBarcodes(mapper.toResponse(saved), barcodesOf(saved.getCodigoArticulo()));
+        return withBarcodes(mapper.toResponse(saved), barcodesOf(saved.getCodigoArticulo()),
+                imageVersionOf(saved.getCodigoArticulo()));
     }
 
     @Transactional
@@ -164,7 +189,7 @@ public class ProductMasterService {
         mapper.updateEntity(request, entity);
         ArticuloMaster saved = crud.save(entity);
         syncBarcodes(id, request.barcodes());
-        return withBarcodes(mapper.toResponse(saved), barcodesOf(id));
+        return withBarcodes(mapper.toResponse(saved), barcodesOf(id), imageVersionOf(id));
     }
 
     /**
