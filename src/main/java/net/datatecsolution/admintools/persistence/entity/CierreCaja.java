@@ -6,8 +6,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -52,38 +50,30 @@ public class CierreCaja {
     private String facturaFinal = "0";
 
     @Column(name = "efectivo")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal efectivo = BigDecimal.ZERO;
 
     @Column(name = "creditos")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal creditos = BigDecimal.ZERO;
 
     @Column(name = "tarjeta")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal tarjeta = BigDecimal.ZERO;
 
     @Column(name = "isv15")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal isv15 = BigDecimal.ZERO;
 
     @Column(name = "isv18")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal isv18 = BigDecimal.ZERO;
 
     @Column(name = "totalventa")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal totalVenta = BigDecimal.ZERO;
 
     @Column(name = "totalimpuesto")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal totalImpuesto = BigDecimal.ZERO;
 
     @Column(name = "usuario")
     private String usuario = "system";
 
     @Column(name = "efectivo_inicial")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal efectivoInicial = BigDecimal.ZERO;
 
     /** 1 = turno abierto, 0 = cerrado. */
@@ -91,20 +81,16 @@ public class CierreCaja {
     private Integer estado = 1;
 
     @Column(name = "total_isv15")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal totalIsv15 = BigDecimal.ZERO;
 
     @Column(name = "total_isv18")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal totalIsv18 = BigDecimal.ZERO;
 
     @Column(name = "total_excento")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal totalExcento = BigDecimal.ZERO;
 
     /** Efectivo esperado: inicial + ventas efectivo - salidas + entradas + cobros - pagos. */
     @Column(name = "total_efectivo")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal totalEfectivo = BigDecimal.ZERO;
 
     @Column(name = "no_salida_inicial")
@@ -114,7 +100,6 @@ public class CierreCaja {
     private Integer noSalidaFinal = 0;
 
     @Column(name = "total_salida")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal totalSalida = BigDecimal.ZERO;
 
     @Column(name = "no_entrada_inicial")
@@ -124,7 +109,6 @@ public class CierreCaja {
     private Integer noEntradaFinal = 0;
 
     @Column(name = "total_entrada")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal totalEntrada = BigDecimal.ZERO;
 
     @Column(name = "no_cobro_inicial")
@@ -134,7 +118,6 @@ public class CierreCaja {
     private Integer noCobroFinal = 0;
 
     @Column(name = "total_cobro")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal totalCobro = BigDecimal.ZERO;
 
     @Column(name = "no_pago_inicial")
@@ -144,12 +127,10 @@ public class CierreCaja {
     private Integer noPagoFinal = 0;
 
     @Column(name = "total_pago")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal totalPago = BigDecimal.ZERO;
 
     /** Efectivo contado en el arqueo al cerrar. */
     @Column(name = "efectivo_caja")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal efectivoCaja = BigDecimal.ZERO;
 
     @Column(name = "turno")
