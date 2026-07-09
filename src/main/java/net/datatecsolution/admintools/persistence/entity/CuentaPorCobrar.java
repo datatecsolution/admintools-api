@@ -6,8 +6,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -20,9 +18,9 @@ import java.time.LocalDate;
  * {@code saldo} del ultimo {@code codigo_reguistro} — equivalente a la
  * funcion MySQL {@code f_saldo_cliente(codigo_cliente)} que usa el Swing.
  *
- * Nota: las columnas monetarias son {@code float(10,2)} en el esquema legacy
- * (no migradas a decimal). Se mapean como BigDecimal y se redondea a 2
- * decimales HALF_EVEN al escribir, igual que el Swing.
+ * Nota: las columnas monetarias son {@code DECIMAL(15,2)} (migradas en V35,
+ * US-071). Se mapean como BigDecimal y se redondea a 2 decimales HALF_EVEN
+ * al escribir, igual que el Swing.
  */
 @Entity
 @Table(name = "cuentas_por_cobrar")
@@ -42,17 +40,13 @@ public class CuentaPorCobrar {
     @Column(name = "descripcion")
     private String descripcion;
 
-    // Columnas legacy float(10,2) -> REAL para ddl-auto=validate.
     @Column(name = "debito")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal debito = BigDecimal.ZERO;
 
     @Column(name = "credito")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal credito = BigDecimal.ZERO;
 
     @Column(name = "saldo")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal saldo = BigDecimal.ZERO;
 
     public Integer getId() {
