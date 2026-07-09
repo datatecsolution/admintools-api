@@ -6,6 +6,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * Entidad ESCRIBIBLE para la tabla {@code articulo} (master data del producto).
@@ -37,7 +39,11 @@ public class ArticuloMaster {
     @Column(name = "codigo_impuesto", nullable = false)
     private Integer codigoImpuesto;
 
+    // precio_articulo migrado a DECIMAL(15,2) en V36 (US-072). Double +
+    // @JdbcTypeCode(DECIMAL) para escribir contra la columna decimal sin
+    // refactor a BigDecimal (Hibernate bindea BigDecimal.valueOf(double)).
     @Column(name = "precio_articulo", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
     private Double precioArticulo;
 
     @Column(name = "tipo_articulo", nullable = false)

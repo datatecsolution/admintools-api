@@ -20,7 +20,12 @@ public class Articulo {
     @Column(name = "articulo")
     private String articulo;
 
+    // precio_articulo migrado a DECIMAL(15,2) en V36 (US-072). Se conserva el
+    // tipo Double + @JdbcTypeCode(DECIMAL) (mismo patrón que existencia) para
+    // alinear el tipo JDBC sin refactor a BigDecimal; es un precio de fallback,
+    // el real vive en precios_articulos (PrecioArticulo, ya BigDecimal).
     @Column(name = "precio_articulo")
+    @JdbcTypeCode(SqlTypes.DECIMAL)
     private Double precioVenta;
 
     @Column(name = "estado")
