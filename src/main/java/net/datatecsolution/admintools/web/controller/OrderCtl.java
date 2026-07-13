@@ -43,6 +43,10 @@ public class OrderCtl {
             // Propagar el status real (401, 404, etc.) — sin esto el catch
             // generico de abajo lo convertiria en 500.
             throw e;
+        } catch (net.datatecsolution.admintools.domain.exception.InsufficientStockException e) {
+            // US-074: dejar que el GlobalExceptionHandler la convierta en 409
+            // con el detalle por producto.
+            throw e;
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Error al guardar la orden: " + e.getMessage());

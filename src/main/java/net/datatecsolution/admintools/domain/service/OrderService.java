@@ -1,17 +1,27 @@
 package net.datatecsolution.admintools.domain.service;
 
 import net.datatecsolution.admintools.domain.Order;
+import net.datatecsolution.admintools.domain.OrderDetails;
 import net.datatecsolution.admintools.domain.Seller;
+import net.datatecsolution.admintools.domain.dto.StockConflict;
+import net.datatecsolution.admintools.domain.exception.InsufficientStockException;
 import net.datatecsolution.admintools.domain.repository.OrderRepository;
+import net.datatecsolution.admintools.persistence.crud.ArticuloCRUD;
+import net.datatecsolution.admintools.persistence.crud.ConfigUserFacturacionCRUD;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 
 @Service
 public class OrderService {
@@ -24,10 +34,26 @@ public class OrderService {
     @Autowired
     private SellerService sellerService;
 
+    @Autowired
+    private ArticuloCRUD articuloCRUD;
+
+    @Autowired
+    private ConfigUserFacturacionCRUD configUserFacturacionCRUD;
+
     public List<Order> getAll() {
         return orderRepository.getAll();
     }
 
+    // @Transactional: el lock pesimista de US-074 debe vivir en la MISMA
+    // transaccion que el insert/update de la orden — se libera al commit.
+    // READ_COMMITTED es OBLIGATORIO para que el guard funcione: con el
+    // REPEATABLE READ default, el read-view se crea en la PRIMERA lectura de
+    // la tx (el findByUser de abajo), y la consulta de disponible que corre
+    // DESPUES de adquirir el lock seguiria viendo el snapshot viejo — dos
+    // saves concurrentes pasarian ambos. Con READ_COMMITTED cada statement
+    // toma snapshot fresco y el segundo ve la orden commiteada del primero
+    // (verificado con el test concurrente del DoD).
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Order save(Order order, String user) {
         Optional<Seller> seller = sellerService.findByUser(user);
         if (seller.isEmpty()) {
@@ -52,8 +78,64 @@ public class OrderService {
             order.setActive(2);
         }
 
+        // US-074: lock pesimista anti-sobreventa ANTES de persistir. Dos saves
+        // concurrentes del mismo articulo se serializan en el FOR UPDATE: el
+        // segundo ve la orden del primero ya commiteada y recibe 409.
+        List<StockConflict> conflictos = findStockConflicts(order, user);
+        if (!conflictos.isEmpty()) {
+            throw new InsufficientStockException(conflictos);
+        }
+
         order.setSellerId(seller.get().getId());
         return orderRepository.save(order, user);
+    }
+
+    /**
+     * US-074: bloqueo OPT-IN por usuario, misma semántica que el SP
+     * crear_venta_kardex_v2 (V33): facturar_sin_inventario=0 → necesita stock;
+     * =1 o sin row → permite sobreventa (comportamiento histórico, no toca a
+     * los usuarios existentes). Disponible = saldo kardex − órdenes pendientes
+     * (f_existencia_y_ordenes, la misma cifra que el vendedor ve como
+     * existencia), reponiendo las líneas de la propia orden cuando es update.
+     */
+    private List<StockConflict> findStockConflicts(Order order, String user) {
+        if (order.getDetails() == null || order.getDetails().isEmpty()) {
+            return List.of();
+        }
+        Integer permite = configUserFacturacionCRUD.findFacturarSinInventario(user).orElse(1);
+        if (permite != 0) {
+            return List.of();
+        }
+
+        // TreeMap → ids ascendentes SIEMPRE (orden de lock estable, anti-deadlock)
+        Map<Integer, BigDecimal> pedidaPorArticulo = new TreeMap<>();
+        for (OrderDetails d : order.getDetails()) {
+            if (d.getAmount() == null) {
+                continue;
+            }
+            pedidaPorArticulo.merge(d.getProductId(), d.getAmount(), BigDecimal::add);
+        }
+        if (pedidaPorArticulo.isEmpty()) {
+            return List.of();
+        }
+
+        List<Integer> ids = List.copyOf(pedidaPorArticulo.keySet());
+        articuloCRUD.lockByIds(ids);
+
+        int ordenExcluida = order.getOrderId() == null ? -1 : order.getOrderId();
+        List<StockConflict> conflictos = new ArrayList<>();
+        for (Object[] fila : articuloCRUD.findDisponibleParaOrden(ids, ordenExcluida)) {
+            int codigoArticulo = ((Number) fila[0]).intValue();
+            String nombre = (String) fila[1];
+            BigDecimal disponible = fila[2] == null
+                    ? BigDecimal.ZERO
+                    : new BigDecimal(fila[2].toString());
+            BigDecimal pedida = pedidaPorArticulo.get(codigoArticulo);
+            if (pedida.compareTo(disponible) > 0) {
+                conflictos.add(new StockConflict(codigoArticulo, nombre, pedida, disponible));
+            }
+        }
+        return conflictos;
     }
 
     /** Pendientes del usuario sin filtro de fecha (POS), paginado. */

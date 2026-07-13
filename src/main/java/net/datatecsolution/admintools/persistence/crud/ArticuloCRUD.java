@@ -83,7 +83,45 @@ public interface ArticuloCRUD extends JpaRepository<Articulo, Integer> {
     @Query(value = "Select * from articulo where codigo_marca=?",nativeQuery = true)
     List<Articulo> getArticuloCategoria(int idCategoria);
 
+    /**
+     * US-074: lock pesimista de las filas base de articulo para serializar
+     * los saves de órdenes concurrentes. Los ids deben venir SIEMPRE en orden
+     * ascendente (anti-deadlock). El cálculo de disponible va en el statement
+     * SIGUIENTE y requiere que la tx corra en READ_COMMITTED (ver
+     * OrderService.save): así toma snapshot fresco después de adquirir el
+     * lock y ve lo que commiteó la transacción competidora.
+     */
+    @Query(value = "SELECT a.codigo_articulo FROM articulo a " +
+            "WHERE a.codigo_articulo IN (:ids) ORDER BY a.codigo_articulo FOR UPDATE",
+            nativeQuery = true)
+    List<Integer> lockByIds(@Param("ids") List<Integer> ids);
 
+    /**
+     * US-074: disponible real por artículo = f_existencia_y_ordenes (saldo
+     * kardex − órdenes pendientes, bodega 1 — misma fuente que articulo_view)
+     * + add-back de las líneas de la propia orden cuando es update (la función
+     * ya las cuenta como pendientes; el subquery replica sus condiciones:
+     * estado < 3 y caja de bodega 1). Solo artículos CON kardex en bodega 1:
+     * sin kardex no hay control de stock (misma regla que el trigger del Swing).
+     */
+    @Query(value = "SELECT a.codigo_articulo, a.articulo, " +
+            "IFNULL(f_existencia_y_ordenes(a.codigo_articulo, 1), 0) " +
+            "+ IFNULL((SELECT SUM(d.cantidad) " +
+            "            FROM detalle_factura_temp d " +
+            "            JOIN encabezado_factura_temp e ON e.numero_factura = d.numero_factura " +
+            "            JOIN cajas c ON e.codigo_caja = c.codigo " +
+            "           WHERE d.codigo_articulo = a.codigo_articulo " +
+            "             AND d.numero_factura = :ordenExcluida " +
+            "             AND c.codigo_bodega = 1 " +
+            "             AND e.estado < 3), 0) AS disponible " +
+            "FROM articulo a " +
+            "WHERE a.codigo_articulo IN (:ids) " +
+            "AND EXISTS (SELECT 1 FROM articulo_kardex ak " +
+            "             WHERE ak.codigo_articulo = a.codigo_articulo " +
+            "               AND ak.codigo_bodega = 1)",
+            nativeQuery = true)
+    List<Object[]> findDisponibleParaOrden(@Param("ids") List<Integer> ids,
+                                           @Param("ordenExcluida") int ordenExcluida);
 
     // Optional<List<Producto>> findByCantidadStockLessThanAndEstado(int cantidadStock, boolean estado);
 /*
