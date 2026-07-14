@@ -2,7 +2,8 @@ package net.datatecsolution.admintools.web.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import net.datatecsolution.admintools.domain.dto.InvoiceAdminDetailResponse;
+import net.datatecsolution.admintools.domain.dto.PublicInvoiceResponse;
+import net.datatecsolution.admintools.domain.service.CompanyService;
 import net.datatecsolution.admintools.domain.service.InvoiceAdminQueryService;
 import net.datatecsolution.admintools.domain.service.InvoiceQrTokenService;
 import org.springframework.http.HttpStatus;
@@ -28,21 +29,27 @@ public class PublicInvoiceCtl {
 
     private final InvoiceQrTokenService tokenService;
     private final InvoiceAdminQueryService queryService;
+    private final CompanyService companyService;
 
     public PublicInvoiceCtl(InvoiceQrTokenService tokenService,
-                            InvoiceAdminQueryService queryService) {
+                            InvoiceAdminQueryService queryService,
+                            CompanyService companyService) {
         this.tokenService = tokenService;
         this.queryService = queryService;
+        this.companyService = companyService;
     }
 
     @GetMapping("/{caja}/{numero}")
-    @Operation(summary = "Detalle de factura vía token del QR (sin autenticación)")
-    public ResponseEntity<InvoiceAdminDetailResponse> get(@PathVariable int caja,
-                                                          @PathVariable int numero,
-                                                          @RequestParam(name = "t") String token) {
+    @Operation(summary = "Detalle de factura + membrete vía token del QR (sin autenticación)")
+    public ResponseEntity<PublicInvoiceResponse> get(@PathVariable int caja,
+                                                     @PathVariable int numero,
+                                                     @RequestParam(name = "t") String token) {
         if (!tokenService.matches(caja, numero, token)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Factura no encontrada");
         }
-        return ResponseEntity.ok(queryService.detail(caja, numero));
+        // El membrete viaja DENTRO de la respuesta gateada por el token: la
+        // página pública imprime con membrete sin abrir GET /company al mundo.
+        return ResponseEntity.ok(new PublicInvoiceResponse(
+                queryService.detail(caja, numero), companyService.getCompany()));
     }
 }
