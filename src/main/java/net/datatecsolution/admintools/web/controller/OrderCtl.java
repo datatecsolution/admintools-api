@@ -14,7 +14,8 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/orders")
-@CrossOrigin(origins = { "http://201.190.38.238", "http://localhost:3000/" })
+// US-049: CORS lo gobierna el bean global (env CORS_ALLOWED_ORIGINS); se quitó
+// el @CrossOrigin hardcodeado.
 public class OrderCtl {
     @Autowired
     private OrderService orderService;
@@ -24,9 +25,16 @@ public class OrderCtl {
     // return new ResponseEntity<>(orderService.getAll(), HttpStatus.OK);
     // }
 
+    // US-049: IDOR cerrado — la pertenencia se resuelve con el usuario del JWT
+    // (principal), NO con el query param `user` que controlaba el atacante
+    // (antes cualquier autenticado leía órdenes ajenas con ?user=<víctima>).
+    // El param `user` se conserva opcional e IGNORADO para no romper clientes
+    // viejos que aún lo envíen.
     @GetMapping("/{orderId}")
-    public ResponseEntity<Order> getOrder(@PathVariable("orderId") int orderId, @RequestParam String user) {
-        return orderService.getOrderUser(orderId, user)
+    public ResponseEntity<Order> getOrder(@PathVariable("orderId") int orderId,
+                                          @RequestParam(name = "user", required = false) String ignoredUser,
+                                          java.security.Principal principal) {
+        return orderService.getOrderUser(orderId, principal.getName())
                 .map(order -> new ResponseEntity<>(order, HttpStatus.OK))
                 .orElse(new ResponseEntity<>(HttpStatus.NOT_FOUND));
     }
@@ -36,21 +44,13 @@ public class OrderCtl {
     public ResponseEntity<Object> save(@RequestBody Order order, java.security.Principal principal) {
         String user = principal.getName();
 
-        try {
-            Order savedOrder = orderService.save(order, user);
-            return new ResponseEntity<>(savedOrder, HttpStatus.CREATED);
-        } catch (ResponseStatusException e) {
-            // Propagar el status real (401, 404, etc.) — sin esto el catch
-            // generico de abajo lo convertiria en 500.
-            throw e;
-        } catch (net.datatecsolution.admintools.domain.exception.InsufficientStockException e) {
-            // US-074: dejar que el GlobalExceptionHandler la convierta en 409
-            // con el detalle por producto.
-            throw e;
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error al guardar la orden: " + e.getMessage());
-        }
+        // US-049: sin try/catch propio — se deja subir todo al
+        // GlobalExceptionHandler, que ya mapea ResponseStatusException /
+        // InsufficientStockException (409) a su status y oculta el detalle
+        // interno de cualquier excepción no controlada (antes este catch-all
+        // devolvía e.getMessage() al cliente, filtrando internals).
+        Order savedOrder = orderService.save(order, user);
+        return new ResponseEntity<>(savedOrder, HttpStatus.CREATED);
     }
 
     /**

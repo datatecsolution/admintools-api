@@ -19,6 +19,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -122,6 +123,21 @@ public class SecurityConfig {
                 http
                                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                                 .csrf(csrf -> csrf.disable())
+                                // US-049 (Fase 4 OWASP): headers de seguridad. X-Content-Type-Options
+                                // (nosniff) y X-Frame-Options (DENY) ya vienen por default de Spring
+                                // Security y no se sobreescriben; acá se agregan los que faltaban.
+                                // La API sirve JSON (no HTML propio salvo swagger, apagado en pdn), así
+                                // que la CSP del SPA vive en su nginx; acá solo `frame-ancestors` como
+                                // anti-clickjacking (no rompe swagger-ui en dev). HSTS necesita
+                                // server.forward-headers-strategy=framework tras el proxy TLS (pdn).
+                                .headers(headers -> headers
+                                                .contentSecurityPolicy(csp -> csp
+                                                                .policyDirectives("frame-ancestors 'none'"))
+                                                .referrerPolicy(ref -> ref
+                                                                .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
+                                                .httpStrictTransportSecurity(hsts -> hsts
+                                                                .includeSubDomains(true)
+                                                                .maxAgeInSeconds(31536000)))
                                 .authorizeHttpRequests(auth -> auth
                                                 // 1. Permitir OPTIONS
                                                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()

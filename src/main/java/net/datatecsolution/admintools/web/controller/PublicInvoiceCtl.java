@@ -49,7 +49,9 @@ public class PublicInvoiceCtl {
         }
         // El membrete viaja DENTRO de la respuesta gateada por el token: la
         // página pública imprime con membrete sin abrir GET /company al mundo.
+        // toPublic() recorta el login del cajero y las facturas restantes del
+        // rango fiscal — datos que el cliente final no necesita ver.
         return ResponseEntity.ok(new PublicInvoiceResponse(
-                queryService.detail(caja, numero), companyService.getCompany()));
+                queryService.detail(caja, numero).toPublic(), companyService.getCompany()));
     }
 }
