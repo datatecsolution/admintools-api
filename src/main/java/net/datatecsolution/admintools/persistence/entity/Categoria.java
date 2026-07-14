@@ -21,6 +21,14 @@ public class Categoria {
     @Column(name = "mostrar_pos")
     private Boolean mostrarPos = false;
 
+    /**
+     * Categoría padre (US-081, V38): self-FK a marcas.codigo_marca.
+     * NULL = raíz. Se mapea el id plano (no ManyToOne): el árbol se arma en
+     * CategoryService con una sola pasada en memoria.
+     */
+    @Column(name = "parent_id")
+    private Integer parentId;
+
     @OneToMany(mappedBy = "categoria")
     private List<Articulo> articulos;
 
@@ -55,6 +63,14 @@ public class Categoria {
 
     public void setMostrarPos(Boolean mostrarPos) {
         this.mostrarPos = mostrarPos;
+    }
+
+    public Integer getParentId() {
+        return parentId;
+    }
+
+    public void setParentId(Integer parentId) {
+        this.parentId = parentId;
     }
 
     public List<Articulo> getArticulos() {
