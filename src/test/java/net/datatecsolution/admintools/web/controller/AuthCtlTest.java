@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import net.datatecsolution.admintools.config.JwtUtil;
 import net.datatecsolution.admintools.domain.LoginRequest;
 import net.datatecsolution.admintools.domain.service.CustomUserDetailsService;
+import net.datatecsolution.admintools.domain.service.LoginAttemptService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -44,6 +45,12 @@ class AuthCtlTest {
     @MockBean
     private CustomUserDetailsService userDetailsService;
 
+    // US-049: dependencia nueva del controller (throttle anti-fuerza-bruta).
+    // Mockeado → isBlocked() devuelve false por default (no bloquea); los tests
+    // de credenciales no dependen del throttle. El test del 429 lo stubbea.
+    @MockBean
+    private LoginAttemptService loginAttemptService;
+
     // Requerido por TenantInterceptor (HandlerInterceptor que el slice levanta);
     // su preHandle tolera getConnection() nulo, asi que el mock basta.
     @MockBean(name = "commonDataSource")
@@ -79,7 +86,24 @@ class AuthCtlTest {
         mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                // US-049: mensaje genérico, sin filtrar la excepción.
+                .andExpect(content().string("Credenciales inválidas"));
+    }
+
+    @Test
+    void login_conThrottleActivo_retorna429() throws Exception {
+        // US-049: la clave usuario+IP está bloqueada por exceso de fallos.
+        when(loginAttemptService.isBlocked(any())).thenReturn(true);
+
+        LoginRequest body = new LoginRequest();
+        body.setUsername("ronal");
+        body.setPassword("password123");
+
+        mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isTooManyRequests());
     }
 
     @Test
