@@ -147,6 +147,11 @@ public class SecurityConfig {
                                                 .requestMatchers(HttpMethod.GET, "/products/*/image")
                                                 .permitAll()
 
+                                                // 3c. Factura pública por QR (US-100): el acceso real lo
+                                                // protege el token HMAC (?t=) — sin token válido → 404.
+                                                .requestMatchers(HttpMethod.GET, "/public/invoices/**")
+                                                .permitAll()
+
                                                 // 4. OpenAPI / Swagger UI publicos (documentacion + try-it-out)
                                                 .requestMatchers(
                                                                 "/swagger-ui/**",

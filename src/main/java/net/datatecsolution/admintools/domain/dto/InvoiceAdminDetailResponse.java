@@ -40,7 +40,9 @@ public record InvoiceAdminDetailResponse(
         BigDecimal isv18,
         FiscalInfo fiscal,
         CreditoInfo credito,
-        List<Linea> lineas
+        List<Linea> lineas,
+        /** US-100: token HMAC para la URL pública de reimpresión por QR (null = feature apagada). */
+        String qrToken
 ) {
     public record Linea(
             Integer codigoArticulo,
