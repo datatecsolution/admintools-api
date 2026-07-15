@@ -6,8 +6,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -39,17 +37,14 @@ public class CuentaPorCobrarFactura {
     @Column(name = "descripcion")
     private String descripcion = "NA";
 
-    // Columnas legacy float(10,2) -> REAL para ddl-auto=validate.
+    // Columnas monetarias DECIMAL(15,2) (migradas en V35, US-071).
     @Column(name = "debito")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal debito = BigDecimal.ZERO;
 
     @Column(name = "credito")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal credito = BigDecimal.ZERO;
 
     @Column(name = "saldo")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal saldo = BigDecimal.ZERO;
 
     @Column(name = "usuario")

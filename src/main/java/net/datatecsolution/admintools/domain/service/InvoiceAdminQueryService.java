@@ -41,10 +41,13 @@ public class InvoiceAdminQueryService {
 
     private final JdbcTemplate jdbc;
     private final CajaCRUD cajaCRUD;
+    private final InvoiceQrTokenService qrTokenService;
 
-    public InvoiceAdminQueryService(@Qualifier("commonDataSource") DataSource commonDS, CajaCRUD cajaCRUD) {
+    public InvoiceAdminQueryService(@Qualifier("commonDataSource") DataSource commonDS, CajaCRUD cajaCRUD,
+                                    InvoiceQrTokenService qrTokenService) {
         this.jdbc = new JdbcTemplate(commonDS);
         this.cajaCRUD = cajaCRUD;
+        this.qrTokenService = qrTokenService;
     }
 
     /** Nombre de BD de una caja, validado contra inyección (uso en SQL cross-DB). */
@@ -223,7 +226,7 @@ public class InvoiceAdminQueryService {
                                 nz(rs.getBigDecimal("subtotal15")),
                                 nz(rs.getBigDecimal("subtotal18")),
                                 isv15, isv18, fiscal, null,
-                                List.of());
+                                List.of(), null);
                     },
                     numero);
         } catch (EmptyResultDataAccessException e) {
@@ -274,7 +277,7 @@ public class InvoiceAdminQueryService {
                 header.descuento(), header.total(), header.pago(), header.cambio(), header.observacion(),
                 header.totalLetras(), header.subtotalExento(), header.subtotal15(), header.subtotal18(),
                 header.isv15(), header.isv18(), header.fiscal(), credito,
-                lineas);
+                lineas, qrTokenService.token(cajaCode, numero));
     }
 
     /**

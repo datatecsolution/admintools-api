@@ -18,6 +18,9 @@ public record CategoryRequest(
         String description,
 
         /** ¿Mostrar/seleccionar esta categoría en el POS táctil? (null = false). */
-        Boolean posVisible
+        Boolean posVisible,
+
+        /** US-081: id de la categoría padre (null = raíz). */
+        Integer parentId
 ) {
 }

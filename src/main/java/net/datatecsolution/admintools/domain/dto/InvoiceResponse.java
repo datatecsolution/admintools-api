@@ -33,6 +33,9 @@ public record InvoiceResponse(
         String totalLetras,
         List<InvoiceLineResponse> lines,
         FiscalInfo fiscal,
-        CreditoInfo credito
+        CreditoInfo credito,
+        /** US-100: caja resuelta del tenant + token HMAC para el QR del ticket (null = apagado). */
+        Integer qrCaja,
+        String qrToken
 ) {
 }

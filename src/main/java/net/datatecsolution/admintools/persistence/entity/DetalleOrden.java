@@ -1,6 +1,8 @@
 package net.datatecsolution.admintools.persistence.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 
@@ -34,7 +36,11 @@ public class DetalleOrden {
 	@Column(name = "descuento")
 	private BigDecimal descuentoItem;
 
+	// precio migrado a DECIMAL(15,2) en V37 (US-073). Double +
+	// @JdbcTypeCode(DECIMAL) para alinear el tipo JDBC sin refactor a
+	// BigDecimal (mismo patrón que Articulo/ArticuloMaster en US-072).
 	@Column(name = "precio")
+	@JdbcTypeCode(SqlTypes.DECIMAL)
 	private Double precioVentaItem;
 
 	@Column(name = "codigo_articulo")

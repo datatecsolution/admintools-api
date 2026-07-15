@@ -8,6 +8,9 @@ public record CategoryResponse(
         Integer id,
         String name,
         String description,
-        Boolean posVisible
+        Boolean posVisible,
+
+        /** US-081: id de la categoría padre (null = raíz). */
+        Integer parentId
 ) {
 }

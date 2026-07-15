@@ -98,6 +98,7 @@ public class InvoiceService {
     private final DatosFacturaCRUD datosFacturaCRUD;
     private final AccountsReceivableService accountsReceivableService;
     private final SellerCatalogService sellerCatalogService;
+    private final InvoiceQrTokenService qrTokenService;
     private final TransactionTemplate commonTx;
     private final TransactionTemplate tenantTx;
 
@@ -111,6 +112,7 @@ public class InvoiceService {
                           DatosFacturaCRUD datosFacturaCRUD,
                           AccountsReceivableService accountsReceivableService,
                           SellerCatalogService sellerCatalogService,
+                          InvoiceQrTokenService qrTokenService,
                           @Qualifier("transactionManager") PlatformTransactionManager commonTm,
                           @Qualifier("tenantTransactionManager") PlatformTransactionManager tenantTm) {
         this.ordenCRUD = ordenCRUD;
@@ -123,6 +125,7 @@ public class InvoiceService {
         this.datosFacturaCRUD = datosFacturaCRUD;
         this.accountsReceivableService = accountsReceivableService;
         this.sellerCatalogService = sellerCatalogService;
+        this.qrTokenService = qrTokenService;
         this.commonTx = new TransactionTemplate(commonTm);
         this.tenantTx = new TransactionTemplate(tenantTm);
     }
@@ -578,6 +581,7 @@ public class InvoiceService {
                         l.getTotal()))
                 .collect(Collectors.toList());
 
+        Integer qrCaja = qrCaja(tenant); // US-100
         return new InvoiceResponse(
                 h.getNumeroFactura(),
                 tenant,
@@ -598,7 +602,14 @@ public class InvoiceService {
                 h.getTotalLetras(),
                 lineResponses,
                 buildFiscal(h, rangoCache),
-                credito);
+                credito,
+                qrCaja,
+                qrCaja == null ? null : qrTokenService.token(qrCaja, h.getNumeroFactura()));
+    }
+
+    /** US-100: código de caja resuelto del tenant, para armar la URL del QR. */
+    private Integer qrCaja(String tenant) {
+        return cajaCRUD.findByNombreDb(tenant).map(c -> c.getCodigo()).orElse(null);
     }
 
     /**

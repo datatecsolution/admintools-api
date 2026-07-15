@@ -13,4 +13,7 @@ public interface CategoriaCRUD extends JpaRepository<Categoria, Integer> {
      */
     @Query("SELECT COUNT(a) FROM Articulo a WHERE a.idCategoria = :id")
     long countArticulos(@Param("id") Integer id);
+
+    /** US-081: hijos directos de una categoría (para bloquear DELETE con 409). */
+    long countByParentId(Integer parentId);
 }

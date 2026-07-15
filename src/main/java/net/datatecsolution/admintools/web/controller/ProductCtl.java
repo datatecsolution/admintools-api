@@ -5,13 +5,15 @@ import net.datatecsolution.admintools.domain.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/products")
-@CrossOrigin(origins = { "http://201.190.38.238", "http://localhost:3000/" })
+// US-049: CORS lo gobierna el bean global (env CORS_ALLOWED_ORIGINS); se quitó
+// el @CrossOrigin hardcodeado que lo pisaba en este controller.
 public class ProductCtl {
     @Autowired
     private ProductService productService;
@@ -67,13 +69,19 @@ public class ProductCtl {
     // productService.getProductsPrecioUser(...). Si el frontend lo seguia
     // usando, debe migrar a /products/description/{description}.
 
+    // US-049: estos endpoints legacy de escritura del maestro no tenían gate de
+    // rol → cualquier autenticado (cajero/vendedor) creaba o borraba productos.
+    // El CRUD real vive en ProductMasterCtl (ADMIN). Se cierran a ADMIN por si
+    // algún cliente viejo aún los invoca.
     @PostMapping("/save")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Product> save(@RequestBody Product product) {
 
         return new ResponseEntity<>(productService.save(product), HttpStatus.CREATED);
     }
 
     @DeleteMapping("/delete/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity delete(@PathVariable("id") int productId) {
         if (productService.delete(productId)) {
             return new ResponseEntity(HttpStatus.OK);

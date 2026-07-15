@@ -74,6 +74,18 @@ public class GlobalExceptionHandler {
                         ex.getMessage(), List.of()));
     }
 
+    /**
+     * US-074: sobreventa bloqueada al guardar una orden -> 409 con el detalle
+     * estructurado [{productId, nombre, pedida, disponible}] por producto.
+     */
+    @ExceptionHandler(net.datatecsolution.admintools.domain.exception.InsufficientStockException.class)
+    public ResponseEntity<StockConflictResponse> handleInsufficientStock(
+            net.datatecsolution.admintools.domain.exception.InsufficientStockException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new StockConflictResponse(HttpStatus.CONFLICT.value(),
+                        ex.getMessage(), ex.getConflicts()));
+    }
+
     /** Argumento ilegal de negocio -> 400. */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {

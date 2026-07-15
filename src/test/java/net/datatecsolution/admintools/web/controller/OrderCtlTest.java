@@ -67,7 +67,8 @@ class OrderCtlTest {
         order.setOrderId(42);
         when(orderService.getOrderUser(42, "ronal")).thenReturn(Optional.of(order));
 
-        mockMvc.perform(get("/orders/42").param("user", "ronal"))
+        // US-049: la pertenencia se resuelve con el principal (JWT).
+        mockMvc.perform(get("/orders/42").principal(RONAL))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.orderId").value(42));
     }
@@ -76,8 +77,23 @@ class OrderCtlTest {
     void getById_inexistente_retorna404() throws Exception {
         when(orderService.getOrderUser(eq(99), anyString())).thenReturn(Optional.empty());
 
-        mockMvc.perform(get("/orders/99").param("user", "ronal"))
+        mockMvc.perform(get("/orders/99").principal(RONAL))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getById_IDOR_ignoraQueryParamUserYUsaPrincipal() throws Exception {
+        // US-049: aunque el atacante pase ?user=victima, la búsqueda debe
+        // hacerse con el usuario del JWT (ronal), no con el param.
+        Order order = new Order();
+        order.setOrderId(42);
+        when(orderService.getOrderUser(42, "ronal")).thenReturn(Optional.of(order));
+
+        mockMvc.perform(get("/orders/42").param("user", "victima").principal(RONAL))
+                .andExpect(status().isOk());
+
+        // se consultó con el principal, jamás con "victima"
+        verify(orderService).getOrderUser(42, "ronal");
     }
 
     @Test

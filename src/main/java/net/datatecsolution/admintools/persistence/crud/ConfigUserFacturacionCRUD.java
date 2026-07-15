@@ -40,4 +40,13 @@ public interface ConfigUserFacturacionCRUD extends JpaRepository<ConfigUserFactu
     @Query(value = "SELECT crear_cliente_credito FROM config_user_facturacion WHERE usuario = :usuario LIMIT 1",
             nativeQuery = true)
     Optional<Integer> findCrearClienteCredito(@Param("usuario") String usuario);
+
+    /**
+     * ¿Puede vender sin inventario? (1=permite sobreventa, 0=bloquea).
+     * Sin row → permitir (histórico). US-074: misma semántica opt-in que
+     * el SP crear_venta_kardex_v2 (V33) aplica al facturar.
+     */
+    @Query(value = "SELECT facturar_sin_inventario FROM config_user_facturacion WHERE usuario = :usuario LIMIT 1",
+            nativeQuery = true)
+    Optional<Integer> findFacturarSinInventario(@Param("usuario") String usuario);
 }

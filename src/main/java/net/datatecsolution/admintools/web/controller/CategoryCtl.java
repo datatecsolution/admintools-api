@@ -44,6 +44,13 @@ public class CategoryCtl {
         return ResponseEntity.ok(service.getAll());
     }
 
+    /** US-081 — arbol de categorias padre-hijo (marcas.parent_id, V38). */
+    @GetMapping("/tree")
+    @Operation(summary = "Arbol jerarquico de categorias (US-081)")
+    public ResponseEntity<List<net.datatecsolution.admintools.domain.dto.CategoryTreeNode>> getTree() {
+        return ResponseEntity.ok(service.getTree());
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "Obtener una categoria por id")
     public ResponseEntity<CategoryResponse> getById(@PathVariable int id) {

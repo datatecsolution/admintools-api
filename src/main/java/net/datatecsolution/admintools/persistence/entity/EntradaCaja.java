@@ -6,8 +6,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -31,7 +29,6 @@ public class EntradaCaja {
     private String concepto = "NA";
 
     @Column(name = "cantidad")
-    @JdbcTypeCode(SqlTypes.REAL)
     private BigDecimal cantidad = BigDecimal.ZERO;
 
     @Column(name = "usuario")

@@ -35,9 +35,14 @@ nano .env-admintools
 #    Mínimo a reemplazar:
 #    - MYSQL_PASSWORD: password real del usuario `admin` de MySQL
 #    - CORS_ALLOWED_ORIGINS: dominios/IPs desde donde se va a consumir
-#    Mantener (probado en cliente Ronal):
-#    - APP_JWT_SECRET: el default histórico, así tokens existentes
-#      siguen valiendo. Rotar en otra ventana si querés mayor seguridad.
+#    - APP_JWT_SECRET: OBLIGATORIO generar uno ALEATORIO y ÚNICO por cliente:
+#        openssl rand -base64 48
+#      NO usar el default histórico del repo: es público en GitHub, así que
+#      cualquiera podría forjar un JWT de admin válido (US-049). Rotarlo
+#      invalida los tokens vigentes (los usuarios re-loguean una vez).
+#    - APP_PUBLIC_INVOICE_SECRET: si se usa la reimpresión por QR (US-100),
+#      generar otro secreto fuerte (`openssl rand -base64 48`). Vacío = QR
+#      apagado. Es el único control del endpoint público /public/invoices.
 
 # 4. Build + levantar
 docker compose up -d --build
