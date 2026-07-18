@@ -18,6 +18,8 @@ public record UserResponse(
         Integer codigoEmpleado,
         Boolean enabled,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        /** US-104: flag de rotación automática de cajas (config_user_facturacion). */
+        Boolean rotacionAutomaticaCajas
 ) {
 }
