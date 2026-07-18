@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import net.datatecsolution.admintools.domain.dto.PasswordResetRequest;
+import net.datatecsolution.admintools.domain.dto.RotacionToggleRequest;
 import net.datatecsolution.admintools.domain.dto.UserCreateRequest;
 import net.datatecsolution.admintools.domain.dto.UserResponse;
 import net.datatecsolution.admintools.domain.dto.UserUpdateRequest;
@@ -68,6 +69,15 @@ public class UserCtl {
     public ResponseEntity<UserResponse> update(@PathVariable int id,
                                                @Valid @RequestBody UserUpdateRequest request) {
         return ResponseEntity.ok(service.update(id, request));
+    }
+
+    @PutMapping("/{id}/rotacion")
+    @Operation(summary = "US-104: activa/desactiva la rotación automática de cajas "
+            + "(encender exige cajero con exactamente 2 cajas asignadas)")
+    public ResponseEntity<Void> setRotacion(@PathVariable int id,
+                                            @Valid @RequestBody RotacionToggleRequest request) {
+        service.setRotacion(id, request.enabled());
+        return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{id}")

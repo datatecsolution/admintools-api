@@ -2,9 +2,11 @@ package net.datatecsolution.admintools.persistence.crud;
 
 import net.datatecsolution.admintools.persistence.entity.ConfigUserFacturacion;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -59,4 +61,24 @@ public interface ConfigUserFacturacionCRUD extends JpaRepository<ConfigUserFactu
     @Query(value = "SELECT rotacion_automatica_cajas+0 FROM config_user_facturacion WHERE usuario = :usuario LIMIT 1",
             nativeQuery = true)
     Optional<Integer> findRotacionAutomaticaCajas(@Param("usuario") String usuario);
+
+    /**
+     * US-104: escribe el flag de rotación. La fila la crea el trigger de BD
+     * usuario_a_insert al crear el usuario — por eso UPDATE y nunca INSERT
+     * (un INSERT parcial divergiría de los defaults que pone el trigger).
+     * Devuelve el rowcount: 0 = usuario legacy sin fila (al encender → 422;
+     * al apagar → ignorar, "sin fila = apagado" como en US-102).
+     */
+    @Modifying
+    @Query(value = "UPDATE config_user_facturacion SET rotacion_automatica_cajas = :valor WHERE usuario = :usuario",
+            nativeQuery = true)
+    int updateRotacionAutomaticaCajas(@Param("usuario") String usuario, @Param("valor") int valor);
+
+    /**
+     * US-104: flags de rotación de TODOS los usuarios en una sola query
+     * (para GET /users sin N+1). Cada fila = [usuario, flag numérico].
+     */
+    @Query(value = "SELECT usuario, rotacion_automatica_cajas+0 FROM config_user_facturacion",
+            nativeQuery = true)
+    List<Object[]> findAllRotacionFlags();
 }

@@ -5,6 +5,7 @@ import net.datatecsolution.admintools.domain.dto.UserCajaResponse;
 import net.datatecsolution.admintools.domain.dto.UserCajaUpsertRequest;
 import net.datatecsolution.admintools.persistence.crud.CajaCRUD;
 import net.datatecsolution.admintools.persistence.crud.CajaUsuarioCRUD;
+import net.datatecsolution.admintools.persistence.crud.ConfigUserFacturacionCRUD;
 import net.datatecsolution.admintools.persistence.crud.UsuarioCRUD;
 import net.datatecsolution.admintools.persistence.entity.Caja;
 import net.datatecsolution.admintools.persistence.entity.CajaUsuario;
@@ -39,14 +40,20 @@ import java.util.stream.StreamSupport;
 @Service
 public class UserCajaService {
 
+    /** US-104: cajero — único tipo con límite de cajas y rotación automática. */
+    private static final int TIPO_CAJERO = 2;
+
     private final CajaUsuarioCRUD crud;
     private final UsuarioCRUD usuariosCrud;
     private final CajaCRUD cajasCrud;
+    private final ConfigUserFacturacionCRUD configCrud;
 
-    public UserCajaService(CajaUsuarioCRUD crud, UsuarioCRUD usuariosCrud, CajaCRUD cajasCrud) {
+    public UserCajaService(CajaUsuarioCRUD crud, UsuarioCRUD usuariosCrud, CajaCRUD cajasCrud,
+                           ConfigUserFacturacionCRUD configCrud) {
         this.crud = crud;
         this.usuariosCrud = usuariosCrud;
         this.cajasCrud = cajasCrud;
+        this.configCrud = configCrud;
     }
 
     public List<UserCajaResponse> getByUser(int userId) {
@@ -67,11 +74,21 @@ public class UserCajaService {
         Map<Integer, String> names = loadCajaNames();
 
         // 1) Validaciones del payload.
+        // US-104: un cajero opera con 1 o 2 cajas (2 = habilita rotación
+        // automática); otros tipos sin límite (admin general puede tener 0).
+        boolean esCajero = u.getTipoPermiso() != null && u.getTipoPermiso() == TIPO_CAJERO;
+        if (esCajero && (incoming.size() < 1 || incoming.size() > 2)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Un cajero debe tener entre 1 y 2 cajas asignadas (recibidas: " + incoming.size() + ")");
+        }
+
         if (incoming.isEmpty()) {
             // permitido: usuario sin cajas (admin general). Sync codigo_caja a 0.
             crud.deleteByIdUsuario(u.getNombreUsuario());
             u.setCodigoCaja(0);
             usuariosCrud.save(u);
+            // US-104: sin cajas no hay rotación posible — se apaga el flag.
+            configCrud.updateRotacionAutomaticaCajas(u.getNombreUsuario(), 0);
             return List.of();
         }
 
@@ -113,6 +130,13 @@ public class UserCajaService {
                 .orElseThrow();
         u.setCodigoCaja(defaultCajaId);
         usuariosCrud.save(u);
+
+        // 4) US-104: la rotación automática exige EXACTAMENTE 2 cajas — si el
+        //    set nuevo no las tiene, el flag se apaga (auto-apagado; mismo
+        //    @Transactional, así que cajas y flag quedan coherentes o rollback).
+        if (incoming.size() != 2) {
+            configCrud.updateRotacionAutomaticaCajas(u.getNombreUsuario(), 0);
+        }
 
         return getByUser(userId);
     }
