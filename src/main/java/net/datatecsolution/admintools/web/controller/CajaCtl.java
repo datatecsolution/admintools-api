@@ -5,8 +5,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import net.datatecsolution.admintools.domain.dto.CajaRequest;
 import net.datatecsolution.admintools.domain.dto.CajaResponse;
+import net.datatecsolution.admintools.domain.dto.UserCajaResponse;
 import net.datatecsolution.admintools.domain.service.CajaAdminService;
 import net.datatecsolution.admintools.domain.service.CajaCatalogService;
+import net.datatecsolution.admintools.domain.service.UserCajaService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.security.Principal;
 import java.util.List;
 
 /**
@@ -33,10 +36,13 @@ public class CajaCtl {
 
     private final CajaCatalogService service;
     private final CajaAdminService adminService;
+    private final UserCajaService userCajaService;
 
-    public CajaCtl(CajaCatalogService service, CajaAdminService adminService) {
+    public CajaCtl(CajaCatalogService service, CajaAdminService adminService,
+                   UserCajaService userCajaService) {
         this.service = service;
         this.adminService = adminService;
+        this.userCajaService = userCajaService;
     }
 
     @GetMapping
@@ -51,6 +57,13 @@ public class CajaCtl {
         return service.getCurrent()
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/mine")
+    @Operation(summary = "US-105: cajas asignadas del usuario autenticado (para el "
+            + "selector manual de caja del POS; incluye cuál es la default)")
+    public ResponseEntity<List<UserCajaResponse>> getMine(Principal principal) {
+        return ResponseEntity.ok(userCajaService.getByUsername(principal.getName()));
     }
 
     @PostMapping

@@ -5,11 +5,13 @@ import net.datatecsolution.admintools.domain.dto.InvoiceCreateRequest;
 import net.datatecsolution.admintools.domain.dto.InvoiceLineRequest;
 import net.datatecsolution.admintools.domain.dto.InvoiceResponse;
 import net.datatecsolution.admintools.persistence.crud.CajaCRUD;
+import net.datatecsolution.admintools.persistence.crud.CajaUsuarioCRUD;
 import net.datatecsolution.admintools.persistence.crud.ClienteCRUD;
 import net.datatecsolution.admintools.persistence.crud.ConfigAppCRUD;
 import net.datatecsolution.admintools.persistence.crud.ImpuestoCRUD;
 import net.datatecsolution.admintools.persistence.crud.OrdenCRUD;
 import net.datatecsolution.admintools.persistence.entity.Caja;
+import net.datatecsolution.admintools.persistence.entity.CajaUsuario;
 import net.datatecsolution.admintools.persistence.entity.Cliente;
 import net.datatecsolution.admintools.persistence.tenant.crud.DatosFacturaCRUD;
 import net.datatecsolution.admintools.persistence.tenant.crud.DetalleFacturaCRUD;
@@ -24,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.security.Principal;
@@ -32,8 +35,12 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -67,6 +74,7 @@ class InvoiceServiceRotacionTest {
     @Mock private SellerCatalogService sellerCatalogService;
     @Mock private InvoiceQrTokenService qrTokenService;
     @Mock private RotacionCajasService rotacionCajasService;
+    @Mock private CajaUsuarioCRUD cajaUsuarioCRUD;
     @Mock private PlatformTransactionManager commonTm;
     @Mock private PlatformTransactionManager tenantTm;
 
@@ -79,7 +87,7 @@ class InvoiceServiceRotacionTest {
         service = new InvoiceService(ordenCRUD, clienteCRUD, encabezadoFacturaCRUD,
                 detalleFacturaCRUD, cajaCRUD, configAppCRUD, impuestoCRUD,
                 datosFacturaCRUD, accountsReceivableService, sellerCatalogService,
-                qrTokenService, rotacionCajasService, commonTm, tenantTm);
+                qrTokenService, rotacionCajasService, cajaUsuarioCRUD, commonTm, tenantTm);
 
         // Consumidor final (id 1) y cliente identificado (id 5)
         when(clienteCRUD.findById(1)).thenReturn(Optional.of(cliente(1)));
@@ -132,10 +140,16 @@ class InvoiceServiceRotacionTest {
 
     /** Venta de contado con una línea; customerId null = consumidor final. */
     private static InvoiceCreateRequest ventaContado(Integer customerId) {
+        return ventaContado(customerId, null);
+    }
+
+    /** US-105: variante con caja MANUAL elegida. */
+    private static InvoiceCreateRequest ventaContado(Integer customerId, Integer cajaId) {
         return new InvoiceCreateRequest(customerId, null, null, 1, 1, null,
                 new BigDecimal("100"), null, null, null,
                 List.of(new InvoiceLineRequest(1, BigDecimal.ONE, new BigDecimal("100"),
-                        BigDecimal.ZERO, 1)));
+                        BigDecimal.ZERO, 1)),
+                cajaId);
     }
 
     // ---------- casos ----------
@@ -181,6 +195,62 @@ class InvoiceServiceRotacionTest {
                 .thenReturn(Optional.of(DB_DEFAULT));
 
         InvoiceResponse r = service.createDirect(ventaContado(null), TECNICO);
+
+        assertThat(tenantEnElSave.get()).isEqualTo(DB_DEFAULT);
+        assertThat(r.tenant()).isEqualTo(DB_DEFAULT);
+    }
+
+    // ---------- US-105: caja MANUAL ----------
+
+    private void conCajasAsignadas() {
+        when(cajaUsuarioCRUD.findByIdUsuario("tecnico")).thenReturn(List.of(
+                new CajaUsuario(1, "tecnico", true), new CajaUsuario(2, "tecnico", false)));
+        when(cajaCRUD.findById(1)).thenReturn(Optional.of(caja(1, DB_DEFAULT)));
+        when(cajaCRUD.findById(2)).thenReturn(Optional.of(caja(2, DB_ROTADA)));
+    }
+
+    @Test
+    void cajaManualAsignada_reRuteaYNoConsultaRotacion() {
+        conCajasAsignadas();
+
+        InvoiceResponse r = service.createDirect(ventaContado(null, 2), TECNICO);
+
+        assertThat(tenantEnElSave.get()).isEqualTo(DB_ROTADA);
+        assertThat(r.tenant()).isEqualTo(DB_ROTADA);
+        // la bandera de la rotación automática queda INTACTA (paridad
+        // rotacionManual del Swing)
+        verify(rotacionCajasService, never()).decideCaja(anyString(), anyBoolean());
+    }
+
+    @Test
+    void cajaManualNoAsignada_es403_ySinGuardar() {
+        conCajasAsignadas();
+
+        assertThatThrownBy(() -> service.createDirect(ventaContado(null, 3), TECNICO))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("no está asignada");
+        verify(encabezadoFacturaCRUD, never()).save(any());
+    }
+
+    @Test
+    void cajaManualGanaAunqueLaAutomaticaHubieraRotado() {
+        conCajasAsignadas();
+        // aunque la automática hubiera mandado a caja_2, el manual pide la 1
+        when(rotacionCajasService.decideCaja("tecnico", true))
+                .thenReturn(Optional.of(DB_ROTADA));
+
+        InvoiceResponse r = service.createDirect(ventaContado(null, 1), TECNICO);
+
+        assertThat(tenantEnElSave.get()).isEqualTo(DB_DEFAULT);
+        assertThat(r.tenant()).isEqualTo(DB_DEFAULT);
+        verify(rotacionCajasService, never()).decideCaja(anyString(), anyBoolean());
+    }
+
+    @Test
+    void cajaManualIgualALaDefault_esInocua() {
+        conCajasAsignadas();
+
+        InvoiceResponse r = service.createDirect(ventaContado(null, 1), TECNICO);
 
         assertThat(tenantEnElSave.get()).isEqualTo(DB_DEFAULT);
         assertThat(r.tenant()).isEqualTo(DB_DEFAULT);

@@ -18,6 +18,12 @@ public record SellerSettingsResponse(
         boolean pwdDescuento,
         /** true: el cajero puede crear clientes tipo 2 (crédito) desde el POS. */
         boolean crearClienteCredito,
-        List<SellerResponse> sellers
+        List<SellerResponse> sellers,
+        /**
+         * US-105: rotación automática de cajas (US-102) encendida para este
+         * usuario — el POS OCULTA el selector manual de caja cuando es true
+         * (paridad Swing: Ctrl+P deshabilitado con la automática activa).
+         */
+        boolean rotacionAutomaticaCajas
 ) {
 }

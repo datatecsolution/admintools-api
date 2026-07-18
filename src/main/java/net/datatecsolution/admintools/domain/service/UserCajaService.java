@@ -57,9 +57,16 @@ public class UserCajaService {
     }
 
     public List<UserCajaResponse> getByUser(int userId) {
-        Usuario u = loadUser(userId);
+        return getByUsername(loadUser(userId).getNombreUsuario());
+    }
+
+    /**
+     * US-105 — cajas asignadas por USERNAME (para {@code GET /cajas/mine}:
+     * el POS no conoce su id numérico, solo el principal del JWT).
+     */
+    public List<UserCajaResponse> getByUsername(String username) {
         Map<Integer, String> names = loadCajaNames();
-        return crud.findByIdUsuario(u.getNombreUsuario()).stream()
+        return crud.findByIdUsuario(username).stream()
                 .sorted((a, b) -> a.getCodigoCaja().compareTo(b.getCodigoCaja()))
                 .map(cu -> new UserCajaResponse(
                         cu.getCodigoCaja(),
