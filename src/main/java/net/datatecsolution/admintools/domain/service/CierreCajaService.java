@@ -34,9 +34,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Cierre de caja (turno) — replica de la logica del Swing:
@@ -162,21 +164,47 @@ public class CierreCajaService {
         CierreCaja cierre = requireAbierto(user);
         Cuadre c = computeCuadre(user, cierre);
 
-        // Caja y rango de facturas de la sesion (tenant del JWT), solo display.
-        String cajaNombre = "—";
+        // US-103: desglose por caja del turno — una fila por cierre_facturacion
+        // (creadas en abrir(), una por caja asignada), con su rango de folios y
+        // sus ventas del cuadre. El Swing muestra lo mismo al consolidar el
+        // cierre de un cajero multi-caja.
+        Map<Integer, String> nombres = new HashMap<>();
+        cajaCRUD.findAll().forEach(cj -> nombres.put(cj.getCodigo(), cj.getDescripcion()));
+        List<CierreResumenResponse.CajaResumen> porCaja = cierreFactCRUD
+                .findByCodigoCierre(cierre.getIdCierre()).stream()
+                .filter(cf -> user.equals(cf.getUsuario()))
+                .sorted(Comparator.comparing(CierreFacturacion::getCodigoCaja))
+                .map(cf -> {
+                    CajaAgg agg = c.porCaja.get(cf.getCodigoCaja());
+                    return new CierreResumenResponse.CajaResumen(
+                            cf.getCodigoCaja(),
+                            nombres.getOrDefault(cf.getCodigoCaja(), "Caja " + cf.getCodigoCaja()),
+                            cf.getFacturaInicial(),
+                            agg != null ? agg.facturaFinal : 0,
+                            agg != null ? agg.numVentas : 0,
+                            agg != null ? agg.totalVentas : BigDecimal.ZERO);
+                })
+                .collect(Collectors.toList());
+
+        // Escalares de compat: con una sola caja, identicos a siempre; con
+        // varias, el nombre pasa a "N cajas" y el rango sigue siendo el de la
+        // caja de la sesion (tenant del JWT) para no romper el POS viejo.
+        String cajaNombre = porCaja.size() == 1 ? porCaja.get(0).caja()
+                : porCaja.size() > 1 ? porCaja.size() + " cajas" : "—";
         Integer noIni = 0;
         Integer noFin = 0;
         String tenant = TenantContext.getTenant();
         if (tenant != null && !tenant.isBlank()) {
             Caja caja = cajaCRUD.findByNombreDb(tenant).orElse(null);
             if (caja != null) {
-                cajaNombre = caja.getDescripcion();
+                if (porCaja.isEmpty()) cajaNombre = caja.getDescripcion();
                 CierreFacturacion cf = cierreFactCRUD
                         .findFirstByUsuarioAndCodigoCierreAndCodigoCaja(user, cierre.getIdCierre(), caja.getCodigo())
                         .orElse(null);
                 if (cf != null) {
                     noIni = cf.getFacturaInicial();
-                    noFin = c.facturaFinalPorCaja.getOrDefault(caja.getCodigo(), 0);
+                    CajaAgg agg = c.porCaja.get(caja.getCodigo());
+                    noFin = agg != null ? agg.facturaFinal : 0;
                 }
             }
         }
@@ -188,7 +216,8 @@ public class CierreCajaService {
                 c.efectivo, c.tarjeta, c.credito,
                 c.exento, c.isv15, c.isv18,
                 c.totalCobro, c.totalEntrada, c.totalSalida, c.totalPago,
-                noIni, noFin);
+                noIni, noFin,
+                porCaja);
     }
 
     /* ------------------------------------------------------------------
@@ -268,10 +297,10 @@ public class CierreCajaService {
             cierreCRUD.save(cierre);
 
             // Completa el rango por caja con la ultima factura del turno.
-            for (Map.Entry<Integer, Integer> e : c.facturaFinalPorCaja.entrySet()) {
+            for (Map.Entry<Integer, CajaAgg> e : c.porCaja.entrySet()) {
                 cierreFactCRUD.findFirstByUsuarioAndCodigoCierreAndCodigoCaja(user, cierre.getIdCierre(), e.getKey())
                         .ifPresent(cf -> {
-                            cf.setFacturaFinal(e.getValue());
+                            cf.setFacturaFinal(e.getValue().facturaFinal);
                             cierreFactCRUD.save(cf);
                         });
             }
@@ -327,7 +356,8 @@ public class CierreCajaService {
         BigDecimal isv15 = BigDecimal.ZERO;      // SUM(impuesto)
         BigDecimal isv18 = BigDecimal.ZERO;      // SUM(isv18)
         BigDecimal total = BigDecimal.ZERO;      // SUM(total)
-        Map<Integer, Integer> facturaFinalPorCaja = new HashMap<>();
+        // US-103: agregado por caja (rango + ventas) para el desglose del resumen.
+        Map<Integer, CajaAgg> porCaja = new HashMap<>();
         int noSalidaFinal;
         BigDecimal totalSalida = BigDecimal.ZERO;
         int noEntradaFinal;
@@ -336,6 +366,13 @@ public class CierreCajaService {
         BigDecimal totalCobro = BigDecimal.ZERO;
         int noPagoFinal;
         BigDecimal totalPago = BigDecimal.ZERO;
+    }
+
+    /** US-103: acumulado de una caja del turno (para el desglose por caja). */
+    private static class CajaAgg {
+        int facturaFinal;
+        int numVentas;
+        BigDecimal totalVentas = BigDecimal.ZERO;
     }
 
     private Cuadre computeCuadre(String user, CierreCaja cierre) {
@@ -357,16 +394,21 @@ public class CierreCajaService {
 
             int ini = cf.getFacturaInicial();
             int fin = ultima.get(0);
-            c.facturaFinalPorCaja.put(codigoCaja, fin);
+            CajaAgg agg = new CajaAgg();
+            agg.facturaFinal = fin;
+            c.porCaja.put(codigoCaja, agg);
 
             Map<String, Object> row = commonJdbc.queryForMap(
                     "SELECT ifnull(sum(subtotal15),0) AS subtotal15, ifnull(sum(subtotal18),0) AS subtotal18, "
                             + "ifnull(sum(cobro_tarjeta),0) AS cobro_tarjeta, ifnull(sum(cobro_efectivo),0) AS cobro_efectivo, "
                             + "ifnull(sum(subtotal_excento),0) AS subtotal_excento, ifnull(sum(total),0) AS total, "
-                            + "ifnull(sum(impuesto),0) AS impuesto, ifnull(sum(isv18),0) AS isv18 "
+                            + "ifnull(sum(impuesto),0) AS impuesto, ifnull(sum(isv18),0) AS isv18, "
+                            + "count(*) AS num_ventas "
                             + "FROM " + db + ".encabezado_factura "
                             + "WHERE usuario = ? AND numero_factura >= ? AND numero_factura <= ? AND estado_factura = 'ACT'",
                     user, ini, fin);
+            agg.numVentas = ((Number) row.getOrDefault("num_ventas", 0)).intValue();
+            agg.totalVentas = bd(row, "total");
             c.efectivo = c.efectivo.add(bd(row, "cobro_efectivo"));
             c.tarjeta = c.tarjeta.add(bd(row, "cobro_tarjeta"));
             c.exento = c.exento.add(bd(row, "subtotal_excento"));
