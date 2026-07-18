@@ -101,6 +101,7 @@ public class InvoiceService {
     private final InvoiceQrTokenService qrTokenService;
     private final TransactionTemplate commonTx;
     private final TransactionTemplate tenantTx;
+    private final RotacionCajasService rotacionCajasService;
 
     public InvoiceService(OrdenCRUD ordenCRUD,
                           ClienteCRUD clienteCRUD,
@@ -113,6 +114,7 @@ public class InvoiceService {
                           AccountsReceivableService accountsReceivableService,
                           SellerCatalogService sellerCatalogService,
                           InvoiceQrTokenService qrTokenService,
+                          RotacionCajasService rotacionCajasService,
                           @Qualifier("transactionManager") PlatformTransactionManager commonTm,
                           @Qualifier("tenantTransactionManager") PlatformTransactionManager tenantTm) {
         this.ordenCRUD = ordenCRUD;
@@ -126,6 +128,7 @@ public class InvoiceService {
         this.accountsReceivableService = accountsReceivableService;
         this.sellerCatalogService = sellerCatalogService;
         this.qrTokenService = qrTokenService;
+        this.rotacionCajasService = rotacionCajasService;
         this.commonTx = new TransactionTemplate(commonTm);
         this.tenantTx = new TransactionTemplate(tenantTm);
     }
@@ -213,6 +216,22 @@ public class InvoiceService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "El credito solo aplica a clientes registrados (gestionados); "
                     + "el cliente seleccionado es de contado.");
+        }
+
+        // US-102: rotación automática de cajas — SOLO facturación directa de
+        // mostrador (el Swing rota únicamente en CtlFacturarFrame.guardarFactura;
+        // createFromOrder NO rota). Si esta venta a consumidor final toca rotar,
+        // se re-enruta el tenant ANTES de resolver codigoCaja y de abrir el
+        // tenantTx: numeración fiscal, trigger del kardex, CxC y la respuesta
+        // salen todos de la caja destino. El interceptor limpia el ThreadLocal
+        // al terminar el request (patrón SaleReturnService.resolveCaja).
+        String dbDestino = rotacionCajasService
+                .decideCaja(user, customerId == CLIENTE_CONSUMIDOR_FINAL)
+                .orElse(tenant);
+        if (!dbDestino.equals(tenant)) {
+            log.info("ROT-1: venta CF de {} rotada de {} a {}", user, tenant, dbDestino);
+            tenant = dbDestino;
+            TenantContext.setTenant(tenant);
         }
 
         // % ISV por taxId (autoritativo, server-side)

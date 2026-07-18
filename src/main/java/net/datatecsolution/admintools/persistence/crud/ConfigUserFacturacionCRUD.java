@@ -49,4 +49,14 @@ public interface ConfigUserFacturacionCRUD extends JpaRepository<ConfigUserFactu
     @Query(value = "SELECT facturar_sin_inventario FROM config_user_facturacion WHERE usuario = :usuario LIMIT 1",
             nativeQuery = true)
     Optional<Integer> findFacturarSinInventario(@Param("usuario") String usuario);
+
+    /**
+     * ¿Rotación automática de cajas en ventas a consumidor final? (1=sí).
+     * Sin row o 0 → APAGADO (opt-in explícito, como el checkbox del Swing).
+     * US-102: el +0 fuerza tipo numérico — la columna es boolean/tinyint(1)
+     * y el driver la devolvería como Boolean, rompiendo Optional&lt;Integer&gt;.
+     */
+    @Query(value = "SELECT rotacion_automatica_cajas+0 FROM config_user_facturacion WHERE usuario = :usuario LIMIT 1",
+            nativeQuery = true)
+    Optional<Integer> findRotacionAutomaticaCajas(@Param("usuario") String usuario);
 }
