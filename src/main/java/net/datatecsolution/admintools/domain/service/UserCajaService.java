@@ -65,13 +65,17 @@ public class UserCajaService {
      * el POS no conoce su id numérico, solo el principal del JWT).
      */
     public List<UserCajaResponse> getByUsername(String username) {
-        Map<Integer, String> names = loadCajaNames();
+        Map<Integer, Caja> cajas = loadCajas();
         return crud.findByIdUsuario(username).stream()
                 .sorted((a, b) -> a.getCodigoCaja().compareTo(b.getCodigoCaja()))
-                .map(cu -> new UserCajaResponse(
-                        cu.getCodigoCaja(),
-                        names.getOrDefault(cu.getCodigoCaja(), "?"),
-                        cu.isPorDefecto()))
+                .map(cu -> {
+                    Caja c = cajas.get(cu.getCodigoCaja());
+                    return new UserCajaResponse(
+                            cu.getCodigoCaja(),
+                            c != null ? c.getDescripcion() : "?",
+                            cu.isPorDefecto(),
+                            c != null ? c.getCodigoBodega() : null);
+                })
                 .collect(Collectors.toList());
     }
 
@@ -159,6 +163,14 @@ public class UserCajaService {
         Map<Integer, String> m = new HashMap<>();
         StreamSupport.stream(cajasCrud.findAll().spliterator(), false)
                 .forEach(c -> m.put(c.getCodigo(), c.getDescripcion()));
+        return m;
+    }
+
+    /** US-105 pulido: entidades completas (nombre + bodega) para /mine. */
+    private Map<Integer, Caja> loadCajas() {
+        Map<Integer, Caja> m = new HashMap<>();
+        StreamSupport.stream(cajasCrud.findAll().spliterator(), false)
+                .forEach(c -> m.put(c.getCodigo(), c));
         return m;
     }
 }
