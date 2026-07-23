@@ -38,6 +38,14 @@ public record InvoiceCreateRequest(
         Integer orderId,
         @NotEmpty(message = "la factura debe tener al menos una línea")
         @Valid
-        List<InvoiceLineRequest> lines
+        List<InvoiceLineRequest> lines,
+        /**
+         * US-105 — caja MANUAL elegida por el cajero (selector del POS, paridad
+         * Ctrl+P del Swing). Debe estar asignada al usuario (cajas_usuarios) o
+         * 403. Tiene prioridad sobre la rotación automática (US-102) y NO
+         * consume su bandera. null = caja default del tenant (+ rotación
+         * automática si aplica).
+         */
+        Integer cajaId
 ) {
 }

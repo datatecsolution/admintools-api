@@ -43,9 +43,14 @@ public class SellerCatalogService {
                         e.getCodigo(),
                         (e.getNombre() + " " + e.getApellido()).trim()))
                 .toList();
+        // US-105: con la rotación automática (US-102) encendida el POS oculta
+        // el selector manual de caja.
+        boolean rotacionAutomatica =
+                configUserFacturacionCRUD.findRotacionAutomaticaCajas(user).orElse(0) == 1;
         return new SellerSettingsResponse(
                 isVentanaVendedor(user), ventanaObservaciones, descuentoEnPorcentaje,
-                pwdPrecio, pwdDescuento, puedeCrearClienteCredito(user), sellers);
+                pwdPrecio, pwdDescuento, puedeCrearClienteCredito(user), sellers,
+                rotacionAutomatica);
     }
 
     /** V30: el cajero puede crear clientes de crédito (tipo 2) desde el POS. */

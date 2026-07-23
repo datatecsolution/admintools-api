@@ -40,6 +40,8 @@ class CajaCtlTest {
 
     @MockBean private CajaCatalogService catalogService;
     @MockBean private CajaAdminService adminService;
+    // US-105: CajaCtl ahora expone GET /cajas/mine
+    @MockBean private net.datatecsolution.admintools.domain.service.UserCajaService userCajaService;
     @MockBean private JwtUtil jwtUtil;
     @MockBean private CustomUserDetailsService customUserDetailsService;
     @MockBean(name = "commonDataSource") private DataSource commonDataSource;

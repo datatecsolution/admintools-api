@@ -6,6 +6,7 @@ import net.datatecsolution.admintools.persistence.crud.CajaUsuarioCRUD;
 import net.datatecsolution.admintools.persistence.crud.ConfigUserFacturacionCRUD;
 import net.datatecsolution.admintools.persistence.crud.UsuarioCRUD;
 import net.datatecsolution.admintools.persistence.entity.Caja;
+import net.datatecsolution.admintools.persistence.entity.CajaUsuario;
 import net.datatecsolution.admintools.persistence.entity.Usuario;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -156,5 +157,22 @@ class UserCajaServiceTest {
         assertThatThrownBy(() -> service.replaceAll(USER_ID, List.of(fila(99, true))))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("no existe");
+    }
+
+    // ---------- US-105: GET /cajas/mine ----------
+
+    @Test
+    void getByUsername_devuelveCajasOrdenadasConDefault() {
+        when(crud.findByIdUsuario(USERNAME)).thenReturn(List.of(
+                new CajaUsuario(2, USERNAME, false),
+                new CajaUsuario(1, USERNAME, true)));
+
+        var cajas = service.getByUsername(USERNAME);
+
+        assertThat(cajas).hasSize(2);
+        assertThat(cajas.get(0).cajaId()).isEqualTo(1);
+        assertThat(cajas.get(0).isDefault()).isTrue();
+        assertThat(cajas.get(1).cajaId()).isEqualTo(2);
+        assertThat(cajas.get(1).cajaName()).isEqualTo("CAJA_SAR");
     }
 }

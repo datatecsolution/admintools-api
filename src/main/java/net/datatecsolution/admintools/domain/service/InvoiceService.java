@@ -11,6 +11,7 @@ import net.datatecsolution.admintools.domain.dto.InvoiceLineRequest;
 import net.datatecsolution.admintools.domain.dto.InvoiceLineResponse;
 import net.datatecsolution.admintools.domain.dto.InvoiceResponse;
 import net.datatecsolution.admintools.persistence.crud.CajaCRUD;
+import net.datatecsolution.admintools.persistence.crud.CajaUsuarioCRUD;
 import net.datatecsolution.admintools.persistence.crud.ClienteCRUD;
 import net.datatecsolution.admintools.persistence.crud.ConfigAppCRUD;
 import net.datatecsolution.admintools.persistence.crud.ImpuestoCRUD;
@@ -102,6 +103,7 @@ public class InvoiceService {
     private final TransactionTemplate commonTx;
     private final TransactionTemplate tenantTx;
     private final RotacionCajasService rotacionCajasService;
+    private final CajaUsuarioCRUD cajaUsuarioCRUD;
 
     public InvoiceService(OrdenCRUD ordenCRUD,
                           ClienteCRUD clienteCRUD,
@@ -115,6 +117,7 @@ public class InvoiceService {
                           SellerCatalogService sellerCatalogService,
                           InvoiceQrTokenService qrTokenService,
                           RotacionCajasService rotacionCajasService,
+                          CajaUsuarioCRUD cajaUsuarioCRUD,
                           @Qualifier("transactionManager") PlatformTransactionManager commonTm,
                           @Qualifier("tenantTransactionManager") PlatformTransactionManager tenantTm) {
         this.ordenCRUD = ordenCRUD;
@@ -129,6 +132,7 @@ public class InvoiceService {
         this.sellerCatalogService = sellerCatalogService;
         this.qrTokenService = qrTokenService;
         this.rotacionCajasService = rotacionCajasService;
+        this.cajaUsuarioCRUD = cajaUsuarioCRUD;
         this.commonTx = new TransactionTemplate(commonTm);
         this.tenantTx = new TransactionTemplate(tenantTm);
     }
@@ -218,20 +222,42 @@ public class InvoiceService {
                     + "el cliente seleccionado es de contado.");
         }
 
-        // US-102: rotación automática de cajas — SOLO facturación directa de
-        // mostrador (el Swing rota únicamente en CtlFacturarFrame.guardarFactura;
-        // createFromOrder NO rota). Si esta venta a consumidor final toca rotar,
-        // se re-enruta el tenant ANTES de resolver codigoCaja y de abrir el
-        // tenantTx: numeración fiscal, trigger del kardex, CxC y la respuesta
-        // salen todos de la caja destino. El interceptor limpia el ThreadLocal
-        // al terminar el request (patrón SaleReturnService.resolveCaja).
-        String dbDestino = rotacionCajasService
-                .decideCaja(user, customerId == CLIENTE_CONSUMIDOR_FINAL)
-                .orElse(tenant);
-        if (!dbDestino.equals(tenant)) {
-            log.info("ROT-1: venta CF de {} rotada de {} a {}", user, tenant, dbDestino);
-            tenant = dbDestino;
-            TenantContext.setTenant(tenant);
+        // El re-enrutamiento del tenant ocurre ANTES de resolver codigoCaja y
+        // de abrir el tenantTx: numeración fiscal, trigger del kardex, CxC y la
+        // respuesta salen todos de la caja destino. El interceptor limpia el
+        // ThreadLocal al terminar el request (patrón SaleReturnService.resolveCaja).
+        if (req.cajaId() != null) {
+            // US-105: caja MANUAL elegida por el cajero — prioridad sobre la
+            // rotación automática y SIN consumir su bandera (semántica
+            // rotacionManual del Swing: Ctrl+P suprime la rotación de esa venta).
+            boolean asignada = cajaUsuarioCRUD.findByIdUsuario(user).stream()
+                    .anyMatch(cu -> req.cajaId().equals(cu.getCodigoCaja()));
+            if (!asignada) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "La caja " + req.cajaId() + " no está asignada al usuario");
+            }
+            String dbManual = cajaCRUD.findById(req.cajaId())
+                    .map(c -> c.getNombreDb())
+                    .filter(n -> n != null && !n.isBlank())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Caja " + req.cajaId() + " no encontrada"));
+            if (!dbManual.equals(tenant)) {
+                log.info("ROT-2: venta de {} en caja MANUAL {} ({})", user, req.cajaId(), dbManual);
+                tenant = dbManual;
+                TenantContext.setTenant(tenant);
+            }
+        } else {
+            // US-102: rotación automática de cajas — SOLO facturación directa de
+            // mostrador (el Swing rota únicamente en CtlFacturarFrame.guardarFactura;
+            // createFromOrder NO rota).
+            String dbDestino = rotacionCajasService
+                    .decideCaja(user, customerId == CLIENTE_CONSUMIDOR_FINAL)
+                    .orElse(tenant);
+            if (!dbDestino.equals(tenant)) {
+                log.info("ROT-1: venta CF de {} rotada de {} a {}", user, tenant, dbDestino);
+                tenant = dbDestino;
+                TenantContext.setTenant(tenant);
+            }
         }
 
         // % ISV por taxId (autoritativo, server-side)
