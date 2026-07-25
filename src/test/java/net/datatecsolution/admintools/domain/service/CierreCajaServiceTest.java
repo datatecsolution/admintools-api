@@ -17,11 +17,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 
@@ -214,6 +216,46 @@ class CierreCajaServiceTest {
         assertThat(r.noFacturaInicio()).isEqualTo(700);
         assertThat(r.noFacturaFinal()).isEqualTo(705);
         assertThat(r.ventaEfectivo()).isEqualByComparingTo("300");
+    }
+
+    @Test
+    void salidasDelTurno_listaEnResumen() {
+        when(cajaUsuarioCRUD.findByIdUsuario(USER)).thenReturn(List.of(
+                new CajaUsuario(1, USER, true)));
+        when(cierreFactCRUD.findByCodigoCierre(10)).thenReturn(List.of(cf(1, 700)));
+        montarCaja(1, "admin_tools_caja_1", 700, 705, "300", "500", 6);
+
+        // US-108: el service consulta salidas_caja por rango+usuario+ACT con RowMapper.
+        List<CierreResumenResponse.SalidaTurno> turno = List.of(
+                new CierreResumenResponse.SalidaTurno(3, LocalDateTime.of(2026, 7, 18, 10, 30),
+                        "Almuerzo personal", new BigDecimal("120.00")),
+                new CierreResumenResponse.SalidaTurno(4, LocalDateTime.of(2026, 7, 18, 15, 0),
+                        "Combustible", new BigDecimal("80.00")));
+        when(jdbc.query(
+                argThat((String s) -> s != null && s.contains("salidas_caja") && s.contains("estado = 'ACT'")),
+                ArgumentMatchers.<RowMapper<CierreResumenResponse.SalidaTurno>>any(),
+                any(Object[].class)))
+                .thenReturn(turno);
+
+        CierreResumenResponse r = service.resumen(USER);
+
+        assertThat(r.salidas()).hasSize(2);
+        assertThat(r.salidas().get(0).numero()).isEqualTo(3);
+        assertThat(r.salidas().get(0).concepto()).isEqualTo("Almuerzo personal");
+        assertThat(r.salidas().get(0).monto()).isEqualByComparingTo("120.00");
+        assertThat(r.salidas().get(1).numero()).isEqualTo(4);
+    }
+
+    @Test
+    void sinSalidasEnElTurno_listaVacia() {
+        when(cajaUsuarioCRUD.findByIdUsuario(USER)).thenReturn(List.of(
+                new CajaUsuario(1, USER, true)));
+        when(cierreFactCRUD.findByCodigoCierre(10)).thenReturn(List.of(cf(1, 700)));
+        montarCaja(1, "admin_tools_caja_1", 700, 705, "300", "500", 6);
+
+        CierreResumenResponse r = service.resumen(USER);
+
+        assertThat(r.salidas()).isEmpty();
     }
 
     @Test

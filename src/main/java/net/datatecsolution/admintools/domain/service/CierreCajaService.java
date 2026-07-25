@@ -217,7 +217,26 @@ public class CierreCajaService {
                 c.exento, c.isv15, c.isv18,
                 c.totalCobro, c.totalEntrada, c.totalSalida, c.totalPago,
                 noIni, noFin,
-                porCaja);
+                porCaja,
+                salidasDelTurno(user, cierre.getNoSalidaInicial(), c.noSalidaFinal));
+    }
+
+    /**
+     * US-108: salidas de caja del turno (subreporte cierre_salida del Swing) —
+     * mismo rango [no_salida_inicial, ultima del usuario] y filtro estado ACT
+     * que el escalar totalSalida, para que la lista cuadre con el total.
+     */
+    private List<CierreResumenResponse.SalidaTurno> salidasDelTurno(String user, int ini, int fin) {
+        return commonJdbc.query(
+                "SELECT codigo_salida, fecha, concepto, cantidad FROM salidas_caja "
+                        + "WHERE codigo_salida >= ? AND codigo_salida <= ? AND usuario = ? AND estado = 'ACT' "
+                        + "ORDER BY codigo_salida",
+                (rs, i) -> new CierreResumenResponse.SalidaTurno(
+                        rs.getInt("codigo_salida"),
+                        rs.getTimestamp("fecha") != null ? rs.getTimestamp("fecha").toLocalDateTime() : null,
+                        rs.getString("concepto"),
+                        rs.getBigDecimal("cantidad")),
+                ini, fin, user);
     }
 
     /* ------------------------------------------------------------------
