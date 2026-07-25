@@ -3,6 +3,7 @@ package net.datatecsolution.admintools.domain.service;
 import net.datatecsolution.admintools.domain.dto.PaymentAccountResponse;
 import net.datatecsolution.admintools.domain.dto.SupplierBalanceResponse;
 import net.datatecsolution.admintools.domain.dto.SupplierPaymentRequest;
+import net.datatecsolution.admintools.domain.dto.SupplierReceiptDetailResponse;
 import net.datatecsolution.admintools.domain.dto.SupplierReceiptResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -137,6 +138,39 @@ public class SupplierPaymentService {
             return new SupplierReceiptResponse(noRecibo, supplierId, monto, formaPago, concepto,
                     saldoAnterior, nuevoSaldo);
         });
+    }
+
+    /**
+     * US-108 — re-lectura de un recibo por numero para reimprimir su
+     * comprobante (mirror del Jasper pago_caja / v_recibo_pago_proveedor,
+     * pero con LEFT JOIN: la vista usa INNER y pierde recibos con proveedor
+     * o forma de pago por defecto -1).
+     */
+    public SupplierReceiptDetailResponse getReceipt(int noRecibo) {
+        List<SupplierReceiptDetailResponse> rows = jdbc.query(
+                "SELECT r.no_recibo, r.fecha, r.codigo_proveedor, p.nombre_proveedor, "
+                        + "r.total, b.nombre AS forma_pago, r.concepto, r.usuario, "
+                        + "r.saldo_anterio, r.saldo "
+                        + "FROM recibo_pago_proveedores r "
+                        + "LEFT JOIN proveedor p ON r.codigo_proveedor = p.codigo_proveedor "
+                        + "LEFT JOIN bancos b ON r.codigo_tipo_pago = b.id "
+                        + "WHERE r.no_recibo = ?",
+                (rs, i) -> new SupplierReceiptDetailResponse(
+                        rs.getInt("no_recibo"),
+                        rs.getTimestamp("fecha") != null ? rs.getTimestamp("fecha").toLocalDateTime() : null,
+                        rs.getInt("codigo_proveedor"),
+                        rs.getString("nombre_proveedor") != null ? rs.getString("nombre_proveedor") : "NA",
+                        rs.getBigDecimal("total"),
+                        rs.getString("forma_pago"),
+                        rs.getString("concepto"),
+                        rs.getString("usuario"),
+                        rs.getBigDecimal("saldo_anterio"),
+                        rs.getBigDecimal("saldo")),
+                noRecibo);
+        if (rows.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Recibo de proveedor no encontrado.");
+        }
+        return rows.get(0);
     }
 
     private static BigDecimal scale(BigDecimal v) {

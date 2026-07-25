@@ -8,6 +8,7 @@ import net.datatecsolution.admintools.domain.dto.BalanceResponse;
 import net.datatecsolution.admintools.domain.dto.DelinquentResponse;
 import net.datatecsolution.admintools.domain.dto.InvoiceAccountResponse;
 import net.datatecsolution.admintools.domain.dto.LedgerEntryResponse;
+import net.datatecsolution.admintools.domain.dto.ReceiptDetailResponse;
 import net.datatecsolution.admintools.domain.dto.ReceiptResponse;
 import net.datatecsolution.admintools.domain.service.AccountsReceivableService;
 import org.springframework.data.domain.Page;
@@ -98,6 +99,13 @@ public class AccountsReceivableCtl {
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(service.getReceipts(customerId, PageRequest.of(page, size)));
+    }
+
+    @GetMapping("/receipts/{noRecibo}")
+    @PreAuthorize("hasAnyRole('ADMIN','CASHIER','SELLER')")
+    @Operation(summary = "Re-lectura de un recibo para reimprimir su comprobante (US-108)")
+    public ResponseEntity<ReceiptDetailResponse> getReceipt(@PathVariable int noRecibo) {
+        return ResponseEntity.ok(service.getReceipt(noRecibo));
     }
 
     // ---- US-034: cobro y trazabilidad a nivel factura ----

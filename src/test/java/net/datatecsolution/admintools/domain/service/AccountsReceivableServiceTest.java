@@ -3,6 +3,7 @@ package net.datatecsolution.admintools.domain.service;
 import jakarta.persistence.EntityNotFoundException;
 import net.datatecsolution.admintools.domain.dto.AbonoRequest;
 import net.datatecsolution.admintools.domain.dto.BalanceResponse;
+import net.datatecsolution.admintools.domain.dto.ReceiptDetailResponse;
 import net.datatecsolution.admintools.domain.dto.ReceiptResponse;
 import net.datatecsolution.admintools.persistence.crud.ClienteCRUD;
 import net.datatecsolution.admintools.persistence.crud.CuentaFacturaCRUD;
@@ -91,6 +92,53 @@ class AccountsReceivableServiceTest {
 
         assertThat(r.saldo()).isEqualByComparingTo("0");
         assertThat(r.disponible()).isEqualByComparingTo("0");
+    }
+
+    // ---------- US-108 p3: re-lectura de recibo para reimpresion ----------
+
+    @Test
+    void getReceipt_mapeaCamposYNombreCliente() {
+        ReciboPago r = new ReciboPago();
+        r.setNoRecibo(45);
+        r.setFecha(java.time.LocalDateTime.of(2026, 7, 20, 9, 15));
+        r.setCodigoCliente(7);
+        r.setTotal(new BigDecimal("250.00"));
+        r.setConcepto("Abono");
+        r.setRef("NA");
+        r.setUsuario("tecnico");
+        r.setSaldoAnterior(new BigDecimal("1000.00"));
+        r.setSaldo(new BigDecimal("750.00"));
+        when(reciboPagoCRUD.findById(45)).thenReturn(Optional.of(r));
+        when(clienteCRUD.findById(7)).thenReturn(Optional.of(cliente(7, BigDecimal.ZERO)));
+
+        ReceiptDetailResponse d = service().getReceipt(45);
+
+        assertThat(d.noRecibo()).isEqualTo(45);
+        assertThat(d.customerId()).isEqualTo(7);
+        assertThat(d.nombreCliente()).isEqualTo("Cliente 7");
+        assertThat(d.total()).isEqualByComparingTo("250.00");
+        assertThat(d.saldoAnterior()).isEqualByComparingTo("1000.00");
+        assertThat(d.saldo()).isEqualByComparingTo("750.00");
+        assertThat(d.usuario()).isEqualTo("tecnico");
+    }
+
+    @Test
+    void getReceipt_clienteBorrado_nombreNA() {
+        ReciboPago r = new ReciboPago();
+        r.setNoRecibo(46);
+        r.setCodigoCliente(99);
+        when(reciboPagoCRUD.findById(46)).thenReturn(Optional.of(r));
+        when(clienteCRUD.findById(99)).thenReturn(Optional.empty());
+
+        assertThat(service().getReceipt(46).nombreCliente()).isEqualTo("NA");
+    }
+
+    @Test
+    void getReceipt_noExiste_lanza404() {
+        when(reciboPagoCRUD.findById(99)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().getReceipt(99))
+                .isInstanceOf(EntityNotFoundException.class);
     }
 
     @Test

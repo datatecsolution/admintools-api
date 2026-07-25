@@ -6,11 +6,13 @@ import jakarta.validation.Valid;
 import net.datatecsolution.admintools.domain.dto.AperturaCajaRequest;
 import net.datatecsolution.admintools.domain.dto.CierreActualResponse;
 import net.datatecsolution.admintools.domain.dto.CierreCajaRequest;
+import net.datatecsolution.admintools.domain.dto.CierreDetalleResponse;
 import net.datatecsolution.admintools.domain.dto.CierreResumenResponse;
 import net.datatecsolution.admintools.domain.service.CierreCajaService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -58,6 +60,12 @@ public class CierreCajaCtl {
     public ResponseEntity<CierreActualResponse> cerrar(@Valid @RequestBody CierreCajaRequest request,
                                                        Principal principal) {
         return ResponseEntity.ok(service.cerrar(request, user(principal)));
+    }
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Re-lectura de un cierre para reimprimir su comprobante (US-108)")
+    public ResponseEntity<CierreDetalleResponse> get(@PathVariable int id) {
+        return ResponseEntity.ok(service.getCierre(id));
     }
 
     private static String user(Principal principal) {

@@ -3,8 +3,10 @@ package net.datatecsolution.admintools.domain.service;
 import net.datatecsolution.admintools.config.TenantContext;
 import net.datatecsolution.admintools.domain.dto.AperturaCajaRequest;
 import net.datatecsolution.admintools.domain.dto.CashMovementRequest;
+import net.datatecsolution.admintools.domain.dto.CashMovementResponse;
 import net.datatecsolution.admintools.domain.dto.CierreActualResponse;
 import net.datatecsolution.admintools.domain.dto.CierreCajaRequest;
+import net.datatecsolution.admintools.domain.dto.CierreDetalleResponse;
 import net.datatecsolution.admintools.domain.dto.CierreResumenResponse;
 import net.datatecsolution.admintools.persistence.crud.CajaCRUD;
 import net.datatecsolution.admintools.persistence.crud.CajaUsuarioCRUD;
@@ -358,6 +360,63 @@ public class CierreCajaService {
         e.setEstado("ACT");
         e.setCodigoCuenta(-1);
         return entradaCRUD.save(e).getCodigoEntrada();
+    }
+
+    /* ------------------------------------------------------------------
+     * US-108: re-lectura para reimpresion de comprobantes
+     * ------------------------------------------------------------------ */
+
+    /** Movimiento por id. El tipo es obligatorio: entradas y salidas numeran aparte. */
+    public CashMovementResponse getMovimiento(String tipo, int id) {
+        if ("salida".equals(tipo)) {
+            return salidaCRUD.findById(id)
+                    .map(s -> new CashMovementResponse(s.getCodigoSalida(), "salida", s.getFecha(),
+                            s.getConcepto(), s.getCantidad(), s.getUsuario(), s.getEstado()))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Salida de caja no encontrada."));
+        }
+        if ("entrada".equals(tipo)) {
+            return entradaCRUD.findById(id)
+                    .map(e -> new CashMovementResponse(e.getCodigoEntrada(), "entrada", e.getFecha(),
+                            e.getConcepto(), e.getCantidad(), e.getUsuario(), e.getEstado()))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Entrada de caja no encontrada."));
+        }
+        throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "tipo debe ser 'entrada' o 'salida'.");
+    }
+
+    /**
+     * Cierre por id, con los numeros persistidos al cerrar (sin recalcular) y
+     * las salidas del turno por el rango guardado. Con el turno aun abierto
+     * los totales van en 0 y las salidas vacias (para eso esta el resumen).
+     */
+    public CierreDetalleResponse getCierre(int id) {
+        CierreCaja c = cierreCRUD.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Cierre de caja no encontrado."));
+
+        // Nombre de caja con la convencion del resumen: 1 → nombre, N → "N cajas".
+        Map<Integer, String> nombres = new HashMap<>();
+        cajaCRUD.findAll().forEach(cj -> nombres.put(cj.getCodigo(), cj.getDescripcion()));
+        List<Integer> cajas = cierreFactCRUD.findByCodigoCierre(c.getIdCierre()).stream()
+                .map(CierreFacturacion::getCodigoCaja)
+                .distinct().sorted().toList();
+        String caja = cajas.size() == 1 ? nombres.getOrDefault(cajas.get(0), "Caja " + cajas.get(0))
+                : cajas.size() > 1 ? cajas.size() + " cajas" : "—";
+
+        BigDecimal totalVenta = nz(c.getEfectivo()).add(nz(c.getTarjeta())).add(nz(c.getCreditos()));
+        return new CierreDetalleResponse(
+                c.getIdCierre(), caja, c.getUsuario(), c.getTurno(), c.getEstado(),
+                c.getFechaInicio(), c.getFechaFinal(),
+                c.getEfectivoInicial(), c.getEfectivo(),
+                c.getTotalCobro(), c.getTotalEntrada(), c.getTotalSalida(), c.getTotalPago(),
+                c.getTotalEfectivo(), c.getEfectivoCaja(),
+                c.getTotalExcento(), c.getIsv15(), c.getIsv18(),
+                c.getTarjeta(), c.getCreditos(), totalVenta,
+                salidasDelTurno(c.getUsuario(),
+                        c.getNoSalidaInicial() != null ? c.getNoSalidaInicial() : 0,
+                        c.getNoSalidaFinal() != null ? c.getNoSalidaFinal() : 0));
     }
 
     /* ------------------------------------------------------------------

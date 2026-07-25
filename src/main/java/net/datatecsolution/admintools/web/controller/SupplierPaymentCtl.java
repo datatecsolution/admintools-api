@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import net.datatecsolution.admintools.domain.dto.PaymentAccountResponse;
 import net.datatecsolution.admintools.domain.dto.SupplierBalanceResponse;
 import net.datatecsolution.admintools.domain.dto.SupplierPaymentRequest;
+import net.datatecsolution.admintools.domain.dto.SupplierReceiptDetailResponse;
 import net.datatecsolution.admintools.domain.dto.SupplierReceiptResponse;
 import net.datatecsolution.admintools.domain.service.SupplierPaymentService;
 import org.springframework.http.HttpStatus;
@@ -57,5 +58,12 @@ public class SupplierPaymentCtl {
                                                        Principal principal) {
         String user = principal != null ? principal.getName() : "SYSTEM";
         return ResponseEntity.status(HttpStatus.CREATED).body(service.pay(id, request, user));
+    }
+
+    @GetMapping("/suppliers/receipts/{noRecibo}")
+    @PreAuthorize("hasAnyRole('ADMIN','SELLER')")
+    @Operation(summary = "Re-lectura de un recibo de proveedor para reimprimir su comprobante (US-108)")
+    public ResponseEntity<SupplierReceiptDetailResponse> getReceipt(@PathVariable int noRecibo) {
+        return ResponseEntity.ok(service.getReceipt(noRecibo));
     }
 }
