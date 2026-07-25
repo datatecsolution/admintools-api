@@ -3,8 +3,10 @@ package net.datatecsolution.admintools.domain.service;
 import net.datatecsolution.admintools.config.TenantContext;
 import net.datatecsolution.admintools.domain.dto.AperturaCajaRequest;
 import net.datatecsolution.admintools.domain.dto.CashMovementRequest;
+import net.datatecsolution.admintools.domain.dto.CashMovementResponse;
 import net.datatecsolution.admintools.domain.dto.CierreActualResponse;
 import net.datatecsolution.admintools.domain.dto.CierreCajaRequest;
+import net.datatecsolution.admintools.domain.dto.CierreDetalleResponse;
 import net.datatecsolution.admintools.domain.dto.CierreResumenResponse;
 import net.datatecsolution.admintools.persistence.crud.CajaCRUD;
 import net.datatecsolution.admintools.persistence.crud.CajaUsuarioCRUD;
@@ -217,7 +219,26 @@ public class CierreCajaService {
                 c.exento, c.isv15, c.isv18,
                 c.totalCobro, c.totalEntrada, c.totalSalida, c.totalPago,
                 noIni, noFin,
-                porCaja);
+                porCaja,
+                salidasDelTurno(user, cierre.getNoSalidaInicial(), c.noSalidaFinal));
+    }
+
+    /**
+     * US-108: salidas de caja del turno (subreporte cierre_salida del Swing) —
+     * mismo rango [no_salida_inicial, ultima del usuario] y filtro estado ACT
+     * que el escalar totalSalida, para que la lista cuadre con el total.
+     */
+    private List<CierreResumenResponse.SalidaTurno> salidasDelTurno(String user, int ini, int fin) {
+        return commonJdbc.query(
+                "SELECT codigo_salida, fecha, concepto, cantidad FROM salidas_caja "
+                        + "WHERE codigo_salida >= ? AND codigo_salida <= ? AND usuario = ? AND estado = 'ACT' "
+                        + "ORDER BY codigo_salida",
+                (rs, i) -> new CierreResumenResponse.SalidaTurno(
+                        rs.getInt("codigo_salida"),
+                        rs.getTimestamp("fecha") != null ? rs.getTimestamp("fecha").toLocalDateTime() : null,
+                        rs.getString("concepto"),
+                        rs.getBigDecimal("cantidad")),
+                ini, fin, user);
     }
 
     /* ------------------------------------------------------------------
@@ -326,7 +347,11 @@ public class CierreCajaService {
             s.setCantidad(scale2(req.monto()));
             s.setUsuario(user);
             s.setFecha(LocalDateTime.now());
-            s.setCodigoEmpleado(codigoEmpleado(user));
+            // US-108: empleado elegido en el POS; sin elegir cae al default
+            // legacy (empleado del usuario, o 1 = "system" = sin empleado).
+            s.setCodigoEmpleado(req.empleadoId() != null
+                    ? requireExists("empleados", "codigo_empleado", req.empleadoId(), "Empleado inválido.")
+                    : codigoEmpleado(user));
             s.setEstado("ACT");
             s.setCodigoCuenta(-1);
             return salidaCRUD.save(s).getCodigoSalida();
@@ -337,8 +362,108 @@ public class CierreCajaService {
         e.setUsuario(user);
         e.setFecha(LocalDateTime.now());
         e.setEstado("ACT");
-        e.setCodigoCuenta(-1);
+        // US-108: cuenta bancaria destino de la entrada (opcional; -1 = sin cuenta).
+        e.setCodigoCuenta(req.cuentaId() != null
+                ? requireExists("bancos", "id", req.cuentaId(), "Cuenta bancaria inválida.")
+                : -1);
         return entradaCRUD.save(e).getCodigoEntrada();
+    }
+
+    /** 422 si el id no existe en el catálogo; devuelve el id validado. */
+    private int requireExists(String table, String idCol, int id, String message) {
+        Integer n = commonJdbc.queryForObject(
+                "SELECT count(*) FROM " + table + " WHERE " + idCol + " = ?", Integer.class, id);
+        if (n == null || n == 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, message);
+        }
+        return id;
+    }
+
+    /* ------------------------------------------------------------------
+     * US-108: re-lectura para reimpresion de comprobantes
+     * ------------------------------------------------------------------ */
+
+    /** Movimiento por id. El tipo es obligatorio: entradas y salidas numeran aparte. */
+    public CashMovementResponse getMovimiento(String tipo, int id) {
+        if ("salida".equals(tipo)) {
+            return salidaCRUD.findById(id)
+                    .map(s -> new CashMovementResponse(s.getCodigoSalida(), "salida", s.getFecha(),
+                            s.getConcepto(), s.getCantidad(), s.getUsuario(), s.getEstado(),
+                            null, empleadoRef(s.getCodigoEmpleado())))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Salida de caja no encontrada."));
+        }
+        if ("entrada".equals(tipo)) {
+            return entradaCRUD.findById(id)
+                    .map(e -> new CashMovementResponse(e.getCodigoEntrada(), "entrada", e.getFecha(),
+                            e.getConcepto(), e.getCantidad(), e.getUsuario(), e.getEstado(),
+                            cuentaRef(e.getCodigoCuenta()), null))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Entrada de caja no encontrada."));
+        }
+        throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "tipo debe ser 'entrada' o 'salida'.");
+    }
+
+    /** Cuenta destino de una entrada; null con el default legacy (-1). */
+    private CashMovementResponse.CuentaRef cuentaRef(Integer codigoCuenta) {
+        if (codigoCuenta == null || codigoCuenta <= 0) return null;
+        List<CashMovementResponse.CuentaRef> rows = commonJdbc.query(
+                "SELECT b.id, b.nombre, b.no_cuenta, tc.tipo_cuenta FROM bancos b "
+                        + "LEFT JOIN tipo_cuenta_bancos tc ON b.id_tipo_cuenta = tc.id "
+                        + "WHERE b.id = ?",
+                (rs, i) -> new CashMovementResponse.CuentaRef(
+                        rs.getInt("id"), rs.getString("nombre"),
+                        rs.getString("no_cuenta") != null && !"NA".equalsIgnoreCase(rs.getString("no_cuenta"))
+                                ? rs.getString("no_cuenta") : null,
+                        rs.getString("tipo_cuenta")),
+                codigoCuenta);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** Empleado de una salida; null con el default legacy (1 = "system"). */
+    private CashMovementResponse.EmpleadoRef empleadoRef(Integer codigoEmpleado) {
+        if (codigoEmpleado == null || codigoEmpleado <= 1) return null;
+        List<CashMovementResponse.EmpleadoRef> rows = commonJdbc.query(
+                "SELECT codigo_empleado, trim(concat(nombre, ' ', apellido)) AS nombre "
+                        + "FROM empleados WHERE codigo_empleado = ?",
+                (rs, i) -> new CashMovementResponse.EmpleadoRef(
+                        rs.getInt("codigo_empleado"), rs.getString("nombre")),
+                codigoEmpleado);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * Cierre por id, con los numeros persistidos al cerrar (sin recalcular) y
+     * las salidas del turno por el rango guardado. Con el turno aun abierto
+     * los totales van en 0 y las salidas vacias (para eso esta el resumen).
+     */
+    public CierreDetalleResponse getCierre(int id) {
+        CierreCaja c = cierreCRUD.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Cierre de caja no encontrado."));
+
+        // Nombre de caja con la convencion del resumen: 1 → nombre, N → "N cajas".
+        Map<Integer, String> nombres = new HashMap<>();
+        cajaCRUD.findAll().forEach(cj -> nombres.put(cj.getCodigo(), cj.getDescripcion()));
+        List<Integer> cajas = cierreFactCRUD.findByCodigoCierre(c.getIdCierre()).stream()
+                .map(CierreFacturacion::getCodigoCaja)
+                .distinct().sorted().toList();
+        String caja = cajas.size() == 1 ? nombres.getOrDefault(cajas.get(0), "Caja " + cajas.get(0))
+                : cajas.size() > 1 ? cajas.size() + " cajas" : "—";
+
+        BigDecimal totalVenta = nz(c.getEfectivo()).add(nz(c.getTarjeta())).add(nz(c.getCreditos()));
+        return new CierreDetalleResponse(
+                c.getIdCierre(), caja, c.getUsuario(), c.getTurno(), c.getEstado(),
+                c.getFechaInicio(), c.getFechaFinal(),
+                c.getEfectivoInicial(), c.getEfectivo(),
+                c.getTotalCobro(), c.getTotalEntrada(), c.getTotalSalida(), c.getTotalPago(),
+                c.getTotalEfectivo(), c.getEfectivoCaja(),
+                c.getTotalExcento(), c.getIsv15(), c.getIsv18(),
+                c.getTarjeta(), c.getCreditos(), totalVenta,
+                salidasDelTurno(c.getUsuario(),
+                        c.getNoSalidaInicial() != null ? c.getNoSalidaInicial() : 0,
+                        c.getNoSalidaFinal() != null ? c.getNoSalidaFinal() : 0));
     }
 
     /* ------------------------------------------------------------------

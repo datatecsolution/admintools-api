@@ -6,6 +6,7 @@ import net.datatecsolution.admintools.domain.dto.BalanceResponse;
 import net.datatecsolution.admintools.domain.dto.DelinquentResponse;
 import net.datatecsolution.admintools.domain.dto.InvoiceAccountResponse;
 import net.datatecsolution.admintools.domain.dto.LedgerEntryResponse;
+import net.datatecsolution.admintools.domain.dto.ReceiptDetailResponse;
 import net.datatecsolution.admintools.domain.dto.ReceiptResponse;
 import net.datatecsolution.admintools.persistence.crud.ClienteCRUD;
 import net.datatecsolution.admintools.persistence.crud.CuentaFacturaCRUD;
@@ -113,6 +114,23 @@ public class AccountsReceivableService {
         requireCliente(customerId);
         return reciboPagoCRUD.findByCodigoClienteOrderByNoReciboDesc(customerId, pageable)
                 .map(AccountsReceivableService::toReceiptResponse);
+    }
+
+    /**
+     * US-108 — re-lectura de un recibo por numero para reimprimir su
+     * comprobante: los campos del POST mas el nombre del cliente.
+     */
+    public ReceiptDetailResponse getReceipt(int noRecibo) {
+        ReciboPago r = reciboPagoCRUD.findById(noRecibo)
+                .orElseThrow(() -> new EntityNotFoundException("Recibo no encontrado: " + noRecibo));
+        String nombre = Optional.ofNullable(r.getCodigoCliente())
+                .flatMap(clienteCRUD::findById)
+                .map(Cliente::getNombre)
+                .orElse("NA");
+        return new ReceiptDetailResponse(
+                r.getNoRecibo(), r.getFecha(), r.getCodigoCliente(), nombre,
+                r.getTotal(), r.getConcepto(), r.getRef(), r.getUsuario(),
+                r.getSaldoAnterior(), r.getSaldo());
     }
 
     // ============================================================
