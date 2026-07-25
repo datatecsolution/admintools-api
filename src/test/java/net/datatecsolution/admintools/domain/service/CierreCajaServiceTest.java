@@ -1,6 +1,7 @@
 package net.datatecsolution.admintools.domain.service;
 
 import net.datatecsolution.admintools.config.TenantContext;
+import net.datatecsolution.admintools.domain.dto.CashMovementRequest;
 import net.datatecsolution.admintools.domain.dto.CashMovementResponse;
 import net.datatecsolution.admintools.domain.dto.CierreDetalleResponse;
 import net.datatecsolution.admintools.domain.dto.CierreResumenResponse;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -47,6 +49,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -311,6 +314,101 @@ class CierreCajaServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
                         .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    @Test
+    void registrarMovimiento_entradaConCuenta_salidaConEmpleado() {
+        // catálogos existen (la validación cuenta filas)
+        when(jdbc.queryForObject(argThat((String s) -> s != null && s.contains("count(*)")),
+                eq(Integer.class), any(Object[].class))).thenReturn(1);
+        when(entradaCRUD.save(any())).thenAnswer(inv -> {
+            EntradaCaja e = inv.getArgument(0);
+            e.setCodigoEntrada(21);
+            return e;
+        });
+        when(salidaCRUD.save(any())).thenAnswer(inv -> {
+            SalidaCaja s = inv.getArgument(0);
+            s.setCodigoSalida(11);
+            return s;
+        });
+
+        int idEntrada = service.registrarMovimiento(new CashMovementRequest(
+                "entrada", new BigDecimal("500"), "Depósito", null, 4, null), USER);
+        assertThat(idEntrada).isEqualTo(21);
+        ArgumentCaptor<EntradaCaja> ce = ArgumentCaptor.forClass(EntradaCaja.class);
+        verify(entradaCRUD).save(ce.capture());
+        assertThat(ce.getValue().getCodigoCuenta()).isEqualTo(4);
+
+        int idSalida = service.registrarMovimiento(new CashMovementRequest(
+                "salida", new BigDecimal("120"), "Gasto", null, null, 3), USER);
+        assertThat(idSalida).isEqualTo(11);
+        ArgumentCaptor<SalidaCaja> cs = ArgumentCaptor.forClass(SalidaCaja.class);
+        verify(salidaCRUD).save(cs.capture());
+        assertThat(cs.getValue().getCodigoEmpleado()).isEqualTo(3);
+    }
+
+    @Test
+    void registrarMovimiento_cuentaOEmpleadoInexistentes_422() {
+        // el count(*) de la validación devuelve 0 (default del setUp)
+        assertThatThrownBy(() -> service.registrarMovimiento(new CashMovementRequest(
+                "entrada", new BigDecimal("500"), "Depósito", null, 99, null), USER))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                        .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        assertThatThrownBy(() -> service.registrarMovimiento(new CashMovementRequest(
+                "salida", new BigDecimal("120"), "Gasto", null, null, 99), USER))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode())
+                        .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+    }
+
+    @Test
+    void getMovimiento_enriqueceCuentaYEmpleado() {
+        EntradaCaja en = new EntradaCaja();
+        en.setCodigoEntrada(21);
+        en.setCantidad(new BigDecimal("500.00"));
+        en.setCodigoCuenta(4);
+        when(entradaCRUD.findById(21)).thenReturn(Optional.of(en));
+        when(jdbc.query(argThat((String s) -> s != null && s.contains("FROM bancos")),
+                ArgumentMatchers.<RowMapper<CashMovementResponse.CuentaRef>>any(), any(Object[].class)))
+                .thenReturn(List.of(new CashMovementResponse.CuentaRef(4, "Atlantida cheques", "22222", "Cheques")));
+
+        SalidaCaja s = new SalidaCaja();
+        s.setCodigoSalida(11);
+        s.setCantidad(new BigDecimal("120.00"));
+        s.setCodigoEmpleado(3);
+        when(salidaCRUD.findById(11)).thenReturn(Optional.of(s));
+        when(jdbc.query(argThat((String q) -> q != null && q.contains("FROM empleados")),
+                ArgumentMatchers.<RowMapper<CashMovementResponse.EmpleadoRef>>any(), any(Object[].class)))
+                .thenReturn(List.of(new CashMovementResponse.EmpleadoRef(3, "Tania Tania")));
+
+        CashMovementResponse entrada = service.getMovimiento("entrada", 21);
+        assertThat(entrada.cuenta()).isNotNull();
+        assertThat(entrada.cuenta().banco()).isEqualTo("Atlantida cheques");
+        assertThat(entrada.cuenta().noCuenta()).isEqualTo("22222");
+        assertThat(entrada.empleado()).isNull();
+
+        CashMovementResponse salida = service.getMovimiento("salida", 11);
+        assertThat(salida.empleado()).isNotNull();
+        assertThat(salida.empleado().nombre()).isEqualTo("Tania Tania");
+        assertThat(salida.cuenta()).isNull();
+    }
+
+    @Test
+    void getMovimiento_defaultsLegacy_sinCuentaNiEmpleado() {
+        EntradaCaja en = new EntradaCaja();
+        en.setCodigoEntrada(22);
+        en.setCodigoCuenta(-1);
+        when(entradaCRUD.findById(22)).thenReturn(Optional.of(en));
+
+        SalidaCaja s = new SalidaCaja();
+        s.setCodigoSalida(12);
+        s.setCodigoEmpleado(1);
+        when(salidaCRUD.findById(12)).thenReturn(Optional.of(s));
+
+        assertThat(service.getMovimiento("entrada", 22).cuenta()).isNull();
+        assertThat(service.getMovimiento("salida", 12).empleado()).isNull();
     }
 
     @Test

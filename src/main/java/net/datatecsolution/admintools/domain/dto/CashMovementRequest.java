@@ -12,10 +12,16 @@ import java.math.BigDecimal;
  * {@code SalidaCajaDao.registrar}/{@code EntradaCajaDao.registrar} del Swing.
  * El POS manda motivo (select) y concepto (texto libre); se persiste el que
  * venga, priorizando concepto.
+ *
+ * US-108: cuentaId (bancos.id) es la cuenta destino de una ENTRADA y
+ * empleadoId el empleado de una SALIDA — ambos opcionales, como en los
+ * Jasper entrada_caja/salida_caja; se ignora el que no corresponda al tipo.
  */
 public record CashMovementRequest(
         @NotBlank @Pattern(regexp = "entrada|salida") String tipo,
         @NotNull @DecimalMin(value = "0.01") BigDecimal monto,
         String motivo,
-        String concepto
+        String concepto,
+        Integer cuentaId,
+        Integer empleadoId
 ) {}

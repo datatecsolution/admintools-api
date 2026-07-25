@@ -17,7 +17,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.security.Principal;
-import java.util.Map;
 
 /**
  * Movimientos de efectivo de la caja (entradas/salidas) — mirror de
@@ -37,11 +36,13 @@ public class CashMovementCtl {
 
     @PostMapping
     @Operation(summary = "Registra una entrada o salida de efectivo")
-    public ResponseEntity<Map<String, Integer>> create(@Valid @RequestBody CashMovementRequest request,
+    public ResponseEntity<CashMovementResponse> create(@Valid @RequestBody CashMovementRequest request,
                                                        Principal principal) {
         String user = principal != null ? principal.getName() : "SYSTEM";
         int id = service.registrarMovimiento(request, user);
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id", id));
+        // US-108: mismos campos que el GET de re-lectura (el POS arma el
+        // comprobante del response); el POS viejo solo lee `id` y sigue OK.
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.getMovimiento(request.tipo(), id));
     }
 
     @GetMapping("/{id}")

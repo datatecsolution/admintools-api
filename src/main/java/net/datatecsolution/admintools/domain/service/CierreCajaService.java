@@ -347,7 +347,11 @@ public class CierreCajaService {
             s.setCantidad(scale2(req.monto()));
             s.setUsuario(user);
             s.setFecha(LocalDateTime.now());
-            s.setCodigoEmpleado(codigoEmpleado(user));
+            // US-108: empleado elegido en el POS; sin elegir cae al default
+            // legacy (empleado del usuario, o 1 = "system" = sin empleado).
+            s.setCodigoEmpleado(req.empleadoId() != null
+                    ? requireExists("empleados", "codigo_empleado", req.empleadoId(), "Empleado inválido.")
+                    : codigoEmpleado(user));
             s.setEstado("ACT");
             s.setCodigoCuenta(-1);
             return salidaCRUD.save(s).getCodigoSalida();
@@ -358,8 +362,21 @@ public class CierreCajaService {
         e.setUsuario(user);
         e.setFecha(LocalDateTime.now());
         e.setEstado("ACT");
-        e.setCodigoCuenta(-1);
+        // US-108: cuenta bancaria destino de la entrada (opcional; -1 = sin cuenta).
+        e.setCodigoCuenta(req.cuentaId() != null
+                ? requireExists("bancos", "id", req.cuentaId(), "Cuenta bancaria inválida.")
+                : -1);
         return entradaCRUD.save(e).getCodigoEntrada();
+    }
+
+    /** 422 si el id no existe en el catálogo; devuelve el id validado. */
+    private int requireExists(String table, String idCol, int id, String message) {
+        Integer n = commonJdbc.queryForObject(
+                "SELECT count(*) FROM " + table + " WHERE " + idCol + " = ?", Integer.class, id);
+        if (n == null || n == 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, message);
+        }
+        return id;
     }
 
     /* ------------------------------------------------------------------
@@ -371,19 +388,49 @@ public class CierreCajaService {
         if ("salida".equals(tipo)) {
             return salidaCRUD.findById(id)
                     .map(s -> new CashMovementResponse(s.getCodigoSalida(), "salida", s.getFecha(),
-                            s.getConcepto(), s.getCantidad(), s.getUsuario(), s.getEstado()))
+                            s.getConcepto(), s.getCantidad(), s.getUsuario(), s.getEstado(),
+                            null, empleadoRef(s.getCodigoEmpleado())))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                             "Salida de caja no encontrada."));
         }
         if ("entrada".equals(tipo)) {
             return entradaCRUD.findById(id)
                     .map(e -> new CashMovementResponse(e.getCodigoEntrada(), "entrada", e.getFecha(),
-                            e.getConcepto(), e.getCantidad(), e.getUsuario(), e.getEstado()))
+                            e.getConcepto(), e.getCantidad(), e.getUsuario(), e.getEstado(),
+                            cuentaRef(e.getCodigoCuenta()), null))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                             "Entrada de caja no encontrada."));
         }
         throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                 "tipo debe ser 'entrada' o 'salida'.");
+    }
+
+    /** Cuenta destino de una entrada; null con el default legacy (-1). */
+    private CashMovementResponse.CuentaRef cuentaRef(Integer codigoCuenta) {
+        if (codigoCuenta == null || codigoCuenta <= 0) return null;
+        List<CashMovementResponse.CuentaRef> rows = commonJdbc.query(
+                "SELECT b.id, b.nombre, b.no_cuenta, tc.tipo_cuenta FROM bancos b "
+                        + "LEFT JOIN tipo_cuenta_bancos tc ON b.id_tipo_cuenta = tc.id "
+                        + "WHERE b.id = ?",
+                (rs, i) -> new CashMovementResponse.CuentaRef(
+                        rs.getInt("id"), rs.getString("nombre"),
+                        rs.getString("no_cuenta") != null && !"NA".equalsIgnoreCase(rs.getString("no_cuenta"))
+                                ? rs.getString("no_cuenta") : null,
+                        rs.getString("tipo_cuenta")),
+                codigoCuenta);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** Empleado de una salida; null con el default legacy (1 = "system"). */
+    private CashMovementResponse.EmpleadoRef empleadoRef(Integer codigoEmpleado) {
+        if (codigoEmpleado == null || codigoEmpleado <= 1) return null;
+        List<CashMovementResponse.EmpleadoRef> rows = commonJdbc.query(
+                "SELECT codigo_empleado, trim(concat(nombre, ' ', apellido)) AS nombre "
+                        + "FROM empleados WHERE codigo_empleado = ?",
+                (rs, i) -> new CashMovementResponse.EmpleadoRef(
+                        rs.getInt("codigo_empleado"), rs.getString("nombre")),
+                codigoEmpleado);
+        return rows.isEmpty() ? null : rows.get(0);
     }
 
     /**
