@@ -13,4 +13,8 @@ public interface StockValuationView {
     BigDecimal getCantidad();
     BigDecimal getCostoUnitario();
     BigDecimal getValorTotal();
+    /** US-112: pedidos pendientes de la bodega (v_reservado_por_articulo). */
+    BigDecimal getReservado();
+    /** US-112: cantidad − reservado. */
+    BigDecimal getDisponible();
 }

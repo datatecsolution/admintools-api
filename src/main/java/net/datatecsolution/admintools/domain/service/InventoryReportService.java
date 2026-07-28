@@ -46,7 +46,8 @@ public class InventoryReportService {
         return articuloKardexCRUD.findValuation(warehouse, pageable)
                 .map(v -> new StockValuationResponse(
                         v.getCodigoArticulo(), v.getArticulo(), v.getCodigoBodega(),
-                        v.getCantidad(), v.getCostoUnitario(), v.getValorTotal()));
+                        v.getCantidad(), v.getCostoUnitario(), v.getValorTotal(),
+                        v.getReservado(), v.getDisponible()));
     }
 
     /** Valor total del inventario; {@code warehouse} null = todas las bodegas. */

@@ -58,7 +58,8 @@ class InventoryCtlTest {
     void valuation_retorna200() throws Exception {
         Page<StockValuationResponse> page = new PageImpl<>(List.of(
                 new StockValuationResponse(5, "Coca Cola", 1,
-                        new BigDecimal("10.00"), new BigDecimal("12.50"), new BigDecimal("125.00"))));
+                        new BigDecimal("10.00"), new BigDecimal("12.50"), new BigDecimal("125.00"),
+                        new BigDecimal("2.00"), new BigDecimal("8.00"))));
         when(inventoryReportService.getValuation(eq(1), any())).thenReturn(page);
 
         mockMvc.perform(get("/inventory/valuation").param("warehouse", "1"))
