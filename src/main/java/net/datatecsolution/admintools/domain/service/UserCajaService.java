@@ -40,8 +40,11 @@ import java.util.stream.StreamSupport;
 @Service
 public class UserCajaService {
 
-    /** US-104: cajero — único tipo con límite de cajas y rotación automática. */
+    /** US-104: cajero — límite 1-2 cajas y rotación automática. */
     private static final int TIPO_CAJERO = 2;
+
+    /** US-110: vendedor — máximo UNA caja (el pedido hereda su caja/bodega, US-109). */
+    private static final int TIPO_VENDEDOR = 3;
 
     private final CajaUsuarioCRUD crud;
     private final UsuarioCRUD usuariosCrud;
@@ -91,6 +94,14 @@ public class UserCajaService {
         if (esCajero && (incoming.size() < 1 || incoming.size() > 2)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Un cajero debe tener entre 1 y 2 cajas asignadas (recibidas: " + incoming.size() + ")");
+        }
+
+        // US-110: el pedido del vendedor hereda SU caja (US-109) — con varias,
+        // la atribución de la reserva de stock sería ambigua. Máximo una.
+        boolean esVendedor = u.getTipoPermiso() != null && u.getTipoPermiso() == TIPO_VENDEDOR;
+        if (esVendedor && incoming.size() > 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Un vendedor solo puede tener UNA caja asignada (recibidas: " + incoming.size() + ")");
         }
 
         if (incoming.isEmpty()) {
