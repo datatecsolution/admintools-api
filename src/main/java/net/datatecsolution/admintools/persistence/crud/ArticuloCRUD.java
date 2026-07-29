@@ -101,8 +101,8 @@ public interface ArticuloCRUD extends JpaRepository<Articulo, Integer> {
      * (saldo kardex − órdenes pendientes) en la BODEGA del vendedor (US-109:
      * antes hardcodeada a 1) + add-back de las líneas de la propia orden
      * cuando es update (la función ya las cuenta como pendientes; el subquery
-     * replica sus condiciones: estado NOT IN (3,5) — US-115: Enviado sigue
-     * reservando — y caja de esa bodega). Solo
+     * replica sus condiciones: estado IN (1,2) — US-121: solo Activa y
+     * Modificada reservan — y caja de esa bodega). Solo
      * artículos CON kardex en la bodega: sin kardex no hay control de stock
      * (misma regla que el trigger del Swing).
      */
@@ -115,7 +115,7 @@ public interface ArticuloCRUD extends JpaRepository<Articulo, Integer> {
             "           WHERE d.codigo_articulo = a.codigo_articulo " +
             "             AND d.numero_factura = :ordenExcluida " +
             "             AND c.codigo_bodega = :bodega " +
-            "             AND e.estado NOT IN (3, 5)), 0) AS disponible " +
+            "             AND e.estado IN (1, 2)), 0) AS disponible " +
             "FROM articulo a " +
             "WHERE a.codigo_articulo IN (:ids) " +
             "AND EXISTS (SELECT 1 FROM articulo_kardex ak " +
