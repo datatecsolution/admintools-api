@@ -20,6 +20,10 @@ import java.util.List;
  * (dulce acumuló 27 pendientes). Decisión 2026-07-28: auto-anular (estado 5,
  * mismo soft-delete del flujo manual) los pedidos con más de N días.
  *
+ * Semántica (US-122): son 7 días SIN ACTIVIDAD, no desde la creación —
+ * editar un pedido refresca su `fecha` y reinicia el reloj, tanto desde la
+ * app/POS (OrdenRepository.save) como desde el Swing (FacturaOrdenVentaDao).
+ *
  * Configurable con app.orders.expiration-days (default 7; 0 = desactivado).
  * Corre a las 03:30 de Honduras; idempotente (re-ejecutar no encuentra nada).
  */
