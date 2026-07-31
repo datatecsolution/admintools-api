@@ -91,15 +91,19 @@ public class OrdenRepository implements OrderRepository {
             log.debug("save() actualizando idFactura={} con {} detalles",
                     orden.getIdFactura(), orden.getDetalles().size());
 
-            // Preservar fecha original: la React no envia el campo `date` en
-            // el payload de update, asi que `orden.fecha` viene null del
-            // mapper. @PrePersist solo dispara en INSERT, NO en MERGE, asi
-            // que sin esto JPA escribiria fecha=NULL → MySQL coerce a
-            // '0000-00-00' → la orden desaparece del filtro getByToday.
-            if (orden.getFecha() == null) {
-                ordenCRUD.findById(orden.getIdFactura())
-                        .ifPresent(existente -> orden.setFecha(existente.getFecha()));
-            }
+            // US-122: editar un pedido REINICIA el reloj de expiración —
+            // la regla es "7 días SIN ACTIVIDAD" (US-118), no 7 días desde la
+            // creación. Unifica el comportamiento con el Swing, que ya hacía
+            // `SET fecha = now()` en FacturaOrdenVentaDao.actualizar().
+            //
+            // Antes se preservaba la fecha ORIGINAL: la app no manda `date` en
+            // el update y @PrePersist no dispara en MERGE, así que sin asignar
+            // nada JPA escribía fecha=NULL → MySQL la coercía a '0000-00-00' y
+            // la orden desaparecía del filtro getByToday. Asignar now() resuelve
+            // las dos cosas: nunca queda null y el pedido editado cuenta como
+            // actividad de hoy (también reaparece en /orders/today, igual que
+            // en el Swing).
+            orden.setFecha(LocalDateTime.now());
 
             Optional<Empleado> empleado = empleadoCRUD.findById(order.getSellerId());
             empleado.ifPresent(orden::setVendedor);
