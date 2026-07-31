@@ -2,7 +2,7 @@ package net.datatecsolution.admintools.web.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import net.datatecsolution.admintools.domain.Customer;
+import net.datatecsolution.admintools.domain.CostomerLegacy;
 import net.datatecsolution.admintools.domain.Product;
 import net.datatecsolution.admintools.domain.service.CustomerService;
 import net.datatecsolution.admintools.domain.service.ProductService;
@@ -47,15 +47,6 @@ public class LegacyOrdersAppCtl {
         this.customerService = customerService;
     }
 
-    /** Forma histórica del cliente (con el typo `costomer`) que espera el front viejo. */
-    public record CostomerLegacy(
-            Integer costomerId,
-            String costomerName,
-            String costomerRTN,
-            String costomerAdress,
-            String costomerTelephoneNumber) {
-    }
-
     /** @deprecated usar {@code GET /products/description/{description}}. */
     @Deprecated
     @GetMapping("/products/despriciouser/{description}")
@@ -80,16 +71,8 @@ public class LegacyOrdersAppCtl {
             return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
         }
         return customerService.getdByName(name, principal.getName())
-                .map(lista -> new ResponseEntity<>(lista.stream().map(this::aLegacy).toList(), HttpStatus.OK))
+                .map(lista -> new ResponseEntity<>(lista.stream().map(CostomerLegacy::de).toList(), HttpStatus.OK))
                 .orElseGet(() -> new ResponseEntity<>(HttpStatus.NOT_FOUND));
     }
 
-    private CostomerLegacy aLegacy(Customer c) {
-        return new CostomerLegacy(
-                c.getCustomerId(),
-                c.getCustomerName(),
-                c.getCustomerRTN(),
-                c.getCustomerAdress(),
-                c.getCustomerTelephoneNumber());
-    }
 }
