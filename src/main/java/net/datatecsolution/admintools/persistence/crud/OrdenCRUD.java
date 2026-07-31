@@ -84,4 +84,14 @@ public interface OrdenCRUD extends CrudRepository<Orden,Integer> {
    @Transactional
    @Query("UPDATE Orden o SET o.estado = :estado WHERE o.idFactura = :id")
    int updateEstado(@Param("id") int id, @Param("estado") int estado);
+
+   /** US-118/US-121: ids de pedidos QUE RESERVAN (Activa/Modificada) anteriores al límite. */
+   @Query("SELECT o.idFactura FROM Orden o WHERE o.estado IN (1,2) AND o.fecha < :limite")
+   java.util.List<Integer> findVivosAnterioresA(@Param("limite") java.time.LocalDateTime limite);
+
+   /** US-118/US-121: anula (estado 5) los pedidos que reservan anteriores al límite.
+    *  Enviado (4) NO reserva ni se toca: es etiqueta terminal de seguimiento. */
+   @Modifying
+   @Query("UPDATE Orden o SET o.estado = 5 WHERE o.estado IN (1,2) AND o.fecha < :limite")
+   int expirarAnterioresA(@Param("limite") java.time.LocalDateTime limite);
 }

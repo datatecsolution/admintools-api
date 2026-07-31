@@ -104,6 +104,9 @@ public class InvoiceService {
     private final TransactionTemplate tenantTx;
     private final RotacionCajasService rotacionCajasService;
     private final CajaUsuarioCRUD cajaUsuarioCRUD;
+    // US-116: guard opt-in contra disponible en venta directa
+    private final net.datatecsolution.admintools.persistence.crud.ArticuloCRUD articuloCRUD;
+    private final net.datatecsolution.admintools.persistence.crud.ConfigUserFacturacionCRUD configUserFacturacionCRUD;
 
     public InvoiceService(OrdenCRUD ordenCRUD,
                           ClienteCRUD clienteCRUD,
@@ -118,6 +121,8 @@ public class InvoiceService {
                           InvoiceQrTokenService qrTokenService,
                           RotacionCajasService rotacionCajasService,
                           CajaUsuarioCRUD cajaUsuarioCRUD,
+                          net.datatecsolution.admintools.persistence.crud.ArticuloCRUD articuloCRUD,
+                          net.datatecsolution.admintools.persistence.crud.ConfigUserFacturacionCRUD configUserFacturacionCRUD,
                           @Qualifier("transactionManager") PlatformTransactionManager commonTm,
                           @Qualifier("tenantTransactionManager") PlatformTransactionManager tenantTm) {
         this.ordenCRUD = ordenCRUD;
@@ -133,6 +138,8 @@ public class InvoiceService {
         this.qrTokenService = qrTokenService;
         this.rotacionCajasService = rotacionCajasService;
         this.cajaUsuarioCRUD = cajaUsuarioCRUD;
+        this.articuloCRUD = articuloCRUD;
+        this.configUserFacturacionCRUD = configUserFacturacionCRUD;
         this.commonTx = new TransactionTemplate(commonTm);
         this.tenantTx = new TransactionTemplate(tenantTm);
     }
@@ -272,6 +279,14 @@ public class InvoiceService {
         FacturacionCalculadora.Totales tot = FacturacionCalculadora.calcularTotales(calcLines);
 
         int codigoCaja = cajaCRUD.findByNombreDb(tenant).map(c -> c.getCodigo()).orElse(0);
+
+        // US-116 (Fase 2 stock reservado): la venta DIRECTA de mostrador valida
+        // contra DISPONIBLE (físico − reservado por pedidos vivos) con el mismo
+        // opt-in de V33/US-074: facturar_sin_inventario=0 bloquea con 409
+        // legible; =1/sin fila no cambia nada. El SP del kardex sigue siendo la
+        // última defensa (bruto) para las carreras entre este check y el insert.
+        validarDisponibleVentaDirecta(user, tenant, req);
+
         int dueDays = creditDueDays();
         // Vendedor: segun config_user_facturacion.ventana_vendedor (Swing). Default 1.
         int codigoVendedor = sellerCatalogService.resolveVendedor(user, req.vendedorId());
@@ -700,6 +715,56 @@ public class InvoiceService {
             return NumberToLetterConverter.convertNumberToLetter(v);
         } catch (RuntimeException e) {
             return "NA";
+        }
+    }
+
+    /**
+     * US-116: guard opt-in contra disponible en la bodega de la caja DESTINO
+     * (post rotación/caja manual). Add-back del propio pedido cuando la venta
+     * viene de uno (req.orderId — createDirect marca estado=3 DESPUÉS del
+     * insert, así que su reserva sigue viva durante este check). Mismo patrón
+     * US-074: lock FOR UPDATE + cálculo en la misma tx común.
+     */
+    private void validarDisponibleVentaDirecta(String user, String tenant, InvoiceCreateRequest req) {
+        Integer permite = configUserFacturacionCRUD.findFacturarSinInventario(user).orElse(1);
+        if (permite != 0 || req.lines() == null || req.lines().isEmpty()) {
+            return;
+        }
+        int bodega = cajaCRUD.findByNombreDb(tenant)
+                .map(c -> c.getCodigoBodega() == null ? 1 : c.getCodigoBodega())
+                .orElse(1);
+
+        java.util.Map<Integer, java.math.BigDecimal> pedidaPorArticulo = new java.util.TreeMap<>();
+        for (InvoiceLineRequest l : req.lines()) {
+            if (l.cantidad() == null) continue;
+            pedidaPorArticulo.merge(l.productId(), l.cantidad(), java.math.BigDecimal::add);
+        }
+        if (pedidaPorArticulo.isEmpty()) {
+            return;
+        }
+        int ordenExcluida = req.orderId() == null ? -1 : req.orderId();
+
+        java.util.List<net.datatecsolution.admintools.domain.dto.StockConflict> conflictos =
+                commonTx.execute(status -> {
+                    java.util.List<Integer> ids = java.util.List.copyOf(pedidaPorArticulo.keySet());
+                    articuloCRUD.lockByIds(ids);
+                    java.util.List<net.datatecsolution.admintools.domain.dto.StockConflict> out = new java.util.ArrayList<>();
+                    for (Object[] fila : articuloCRUD.findDisponibleParaOrden(ids, ordenExcluida, bodega)) {
+                        int codigoArticulo = ((Number) fila[0]).intValue();
+                        String nombre = (String) fila[1];
+                        java.math.BigDecimal disponible = fila[2] == null
+                                ? java.math.BigDecimal.ZERO
+                                : new java.math.BigDecimal(fila[2].toString());
+                        java.math.BigDecimal pedida = pedidaPorArticulo.get(codigoArticulo);
+                        if (pedida.compareTo(disponible) > 0) {
+                            out.add(new net.datatecsolution.admintools.domain.dto.StockConflict(
+                                    codigoArticulo, nombre, pedida, disponible));
+                        }
+                    }
+                    return out;
+                });
+        if (conflictos != null && !conflictos.isEmpty()) {
+            throw new net.datatecsolution.admintools.domain.exception.InsufficientStockException(conflictos);
         }
     }
 }

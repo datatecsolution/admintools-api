@@ -7,6 +7,7 @@ import net.datatecsolution.admintools.domain.dto.StockConflict;
 import net.datatecsolution.admintools.domain.exception.InsufficientStockException;
 import net.datatecsolution.admintools.domain.repository.OrderRepository;
 import net.datatecsolution.admintools.persistence.crud.ArticuloCRUD;
+import net.datatecsolution.admintools.persistence.crud.CajaUsuarioCRUD;
 import net.datatecsolution.admintools.persistence.crud.ConfigUserFacturacionCRUD;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,8 +41,31 @@ public class OrderService {
     @Autowired
     private ConfigUserFacturacionCRUD configUserFacturacionCRUD;
 
+    @Autowired
+    private CajaUsuarioCRUD cajaUsuarioCRUD;
+
     public List<Order> getAll() {
         return orderRepository.getAll();
+    }
+
+    /** US-109: caja efectiva del vendedor — (codigo, codigo_bodega). */
+    record CajaVendedor(int codigo, int bodega) {}
+
+    /**
+     * US-109: misma resolución que el TenantInterceptor (cajas_usuarios
+     * por_defecto → fallback legacy usuario.codigo_caja). Empty si el usuario
+     * no tiene caja por ninguna vía — el caller decide el error (nunca caer
+     * en silencio a la caja 1, que era el bug del DEFAULT).
+     */
+    private Optional<CajaVendedor> resolverCajaVendedor(String user) {
+        List<Object[]> filas = cajaUsuarioCRUD.findCajaEfectiva(user);
+        if (filas.isEmpty()) {
+            filas = cajaUsuarioCRUD.findCajaLegacy(user);
+        }
+        return filas.stream().findFirst()
+                .map(fila -> new CajaVendedor(
+                        ((Number) fila[0]).intValue(),
+                        fila[1] == null ? 1 : ((Number) fila[1]).intValue()));
     }
 
     // @Transactional: el lock pesimista de US-074 debe vivir en la MISMA
@@ -61,7 +85,17 @@ public class OrderService {
                     "Vendedor no encontrado para el usuario autenticado");
         }
 
-        log.debug("Guardando orden con id={} user={}", order.getOrderId(), user);
+        // US-109: el pedido hereda la caja REAL del vendedor — sin esto,
+        // codigo_caja quedaba en su DEFAULT 1 y la reserva de
+        // f_existencia_y_ordenes caía siempre en la bodega de la caja 1,
+        // fuera cual fuera la bodega del vendedor. Sin caja resoluble se
+        // rechaza con mensaje claro (nunca default silencioso).
+        CajaVendedor caja = resolverCajaVendedor(user)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "El vendedor no tiene caja asignada; asignala en Usuarios para poder crear pedidos"));
+
+        log.debug("Guardando orden con id={} user={} caja={} bodega={}",
+                order.getOrderId(), user, caja.codigo(), caja.bodega());
 
         if (order.getOrderId() == null) {
             // INSERT
@@ -81,13 +115,14 @@ public class OrderService {
         // US-074: lock pesimista anti-sobreventa ANTES de persistir. Dos saves
         // concurrentes del mismo articulo se serializan en el FOR UPDATE: el
         // segundo ve la orden del primero ya commiteada y recibe 409.
-        List<StockConflict> conflictos = findStockConflicts(order, user);
+        // US-109: el disponible se valida en la BODEGA de la caja del vendedor.
+        List<StockConflict> conflictos = findStockConflicts(order, user, caja.bodega());
         if (!conflictos.isEmpty()) {
             throw new InsufficientStockException(conflictos);
         }
 
         order.setSellerId(seller.get().getId());
-        return orderRepository.save(order, user);
+        return orderRepository.save(order, user, caja.codigo());
     }
 
     /**
@@ -98,7 +133,7 @@ public class OrderService {
      * (f_existencia_y_ordenes, la misma cifra que el vendedor ve como
      * existencia), reponiendo las líneas de la propia orden cuando es update.
      */
-    private List<StockConflict> findStockConflicts(Order order, String user) {
+    private List<StockConflict> findStockConflicts(Order order, String user, int bodega) {
         if (order.getDetails() == null || order.getDetails().isEmpty()) {
             return List.of();
         }
@@ -124,7 +159,7 @@ public class OrderService {
 
         int ordenExcluida = order.getOrderId() == null ? -1 : order.getOrderId();
         List<StockConflict> conflictos = new ArrayList<>();
-        for (Object[] fila : articuloCRUD.findDisponibleParaOrden(ids, ordenExcluida)) {
+        for (Object[] fila : articuloCRUD.findDisponibleParaOrden(ids, ordenExcluida, bodega)) {
             int codigoArticulo = ((Number) fila[0]).intValue();
             String nombre = (String) fila[1];
             BigDecimal disponible = fila[2] == null

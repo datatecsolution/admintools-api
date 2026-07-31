@@ -55,13 +55,16 @@ public class OrdenRepository implements OrderRepository {
     }
 
     @Override
-    public Order save(Order order, String user) {
+    public Order save(Order order, String user, int cajaId) {
         Orden orden = mapper.toOrden(order);
         // SOLO si el payload no trae usuario (p.ej. POS). Si la app de pedidos lo
         // envia, se preserva — no se altera el comportamiento en produccion.
         if (orden.getUsuario() == null || orden.getUsuario().isBlank()) {
             orden.setUsuario(user);
         }
+        // US-109: caja real del vendedor (create Y update — el entity tiene
+        // DEFAULT 1, que enterraba toda reserva en la bodega de la caja 1).
+        orden.setCodigoCaja(cajaId);
         log.debug("save() inicial idFactura={}", orden.getIdFactura());
 
         if (orden.getIdFactura() == null) {

@@ -75,6 +75,8 @@ class InvoiceServiceRotacionTest {
     @Mock private InvoiceQrTokenService qrTokenService;
     @Mock private RotacionCajasService rotacionCajasService;
     @Mock private CajaUsuarioCRUD cajaUsuarioCRUD;
+    @Mock private net.datatecsolution.admintools.persistence.crud.ArticuloCRUD articuloCRUD;
+    @Mock private net.datatecsolution.admintools.persistence.crud.ConfigUserFacturacionCRUD configUserFacturacionCRUD;
     @Mock private PlatformTransactionManager commonTm;
     @Mock private PlatformTransactionManager tenantTm;
 
@@ -87,7 +89,13 @@ class InvoiceServiceRotacionTest {
         service = new InvoiceService(ordenCRUD, clienteCRUD, encabezadoFacturaCRUD,
                 detalleFacturaCRUD, cajaCRUD, configAppCRUD, impuestoCRUD,
                 datosFacturaCRUD, accountsReceivableService, sellerCatalogService,
-                qrTokenService, rotacionCajasService, cajaUsuarioCRUD, commonTm, tenantTm);
+                qrTokenService, rotacionCajasService, cajaUsuarioCRUD,
+                articuloCRUD, configUserFacturacionCRUD, commonTm, tenantTm);
+
+        // US-116: por defecto el guard queda en modo histórico (permitir) para
+        // que los tests de rotación no dependan del stock.
+        when(configUserFacturacionCRUD.findFacturarSinInventario(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(Optional.of(1));
 
         // Consumidor final (id 1) y cliente identificado (id 5)
         when(clienteCRUD.findById(1)).thenReturn(Optional.of(cliente(1)));

@@ -10,7 +10,8 @@ import java.util.Optional;
 public interface OrderRepository {
     List<Order> getAll();
 
-    Order save(Order order,String user);
+    /** US-109: cajaId = caja efectiva del vendedor (la reserva de stock cae en su bodega). */
+    Order save(Order order, String user, int cajaId);
 
     List<Order> getByToday(String user);
 

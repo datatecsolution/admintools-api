@@ -11,6 +11,8 @@ public record StockValuationResponse(
         Integer codigoBodega,
         BigDecimal cantidad,
         BigDecimal costoUnitario,
-        BigDecimal valorTotal
+        BigDecimal valorTotal,
+        BigDecimal reservado,
+        BigDecimal disponible
 ) {
 }
