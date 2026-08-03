@@ -24,18 +24,6 @@ public class ClienteRepository implements CustomerRepository {
     private CustomerMapper mapper;
 
     @Override
-    public List<Customer> getAll() {
-        List<Cliente> clientes = (List<Cliente>) clienteCRUD.findAll();
-        return mapper.toCustomers(clientes);
-    }
-
-    @Override
-    public Optional<List<Customer>> getByNameAndUser(String name, String user) {
-        List<Cliente> clientes = clienteCRUD.findByNombreVendedorOrderByNombreAsc(name, user);
-        return Optional.of(mapper.toCustomers(clientes));
-    }
-
-    @Override
     public Optional<Customer> getById(int id) {
         return clienteCRUD.findById(id).map(mapper::toCustomer);
     }

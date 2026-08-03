@@ -122,49 +122,6 @@ public class Order {
         this.customer = customer;
     }
 
-    // ---------------------------------------------------------------
-    // US-124 — PUENTE con el build DESPLEGADO de la app de pedidos, que
-    // usa el nombre histórico `costomer*`. Se expone en AMBOS sentidos:
-    //   · salida  → la lista de pedidos necesita `costomer.costomerName`
-    //   · entrada → sin `costomerId` el insert falla con
-    //     "Column 'codigo_cliente' cannot be null" (visto en producción
-    //     2026-07-31: 11 pedidos rechazados con HTTP 500).
-    // Se implementa como par getter/setter con el MISMO nombre JSON para
-    // que Jackson lo trate como una sola propiedad (sin ambigüedad).
-    // BORRAR cuando el front desplegado se actualice a customerId/customer.
-    // ---------------------------------------------------------------
-
-    @JsonProperty("costomerId")
-    public Integer getCostomerId() {
-        return customerId;
-    }
-
-    @JsonProperty("costomerId")
-    public void setCostomerId(Integer costomerId) {
-        if (costomerId != null) {
-            this.customerId = costomerId;
-        }
-    }
-
-    @JsonProperty("costomer")
-    public CostomerLegacy getCostomer() {
-        return CostomerLegacy.de(customer);
-    }
-
-    @JsonProperty("costomer")
-    public void setCostomer(CostomerLegacy costomer) {
-        if (costomer == null) {
-            return;
-        }
-        // El id puede venir solo en el objeto: sin esto el pedido quedaría
-        // sin cliente. No depende del orden de las claves del JSON.
-        if (costomer.costomerId() != null) {
-            this.customerId = costomer.costomerId();
-        }
-        if (this.customer == null) {
-            this.customer = costomer.aCustomer();
-        }
-    }
     public List<OrderDetails> getDetails() {
         return details;
     }

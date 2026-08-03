@@ -12,8 +12,6 @@ import java.util.Optional;
  * (typo historico). Implementacion: {@code ClienteRepository}.
  */
 public interface CustomerRepository {
-    List<Customer> getAll();
-    Optional<List<Customer>> getByNameAndUser(String name, String user);
     Optional<Customer> getById(int id);
 
     // US-019
