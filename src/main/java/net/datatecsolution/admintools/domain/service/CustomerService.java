@@ -29,7 +29,7 @@ import java.util.stream.Collectors;
 /**
  * Service de clientes. Reemplaza la antigua {@code CostomerService}
  * (typo historico). Conserva las dos puertas de entrada:
- *  - metodos getdAll/getdByName que usaba el legacy /costomers (controller borrado en US-022)
+
  *  - search/create/update/delete con DTOs (US-019 /customers)
  */
 @Service
@@ -53,14 +53,6 @@ public class CustomerService {
 
     public CustomerService(@Qualifier("commonDataSource") DataSource commonDS) {
         this.jdbc = new JdbcTemplate(commonDS);
-    }
-
-    public List<Customer> getdAll() {
-        return customerRepository.getAll();
-    }
-
-    public Optional<List<Customer>> getdByName(String name, String user) {
-        return customerRepository.getByNameAndUser(name, user);
     }
 
     // US-019: devuelve DTO de salida; 404 si no existe (via GlobalExceptionHandler).
