@@ -18,5 +18,5 @@ public interface ProductRepository {
 
     void delete(int productId);
 
-    Optional<List<Product>> getByDescriptionAndUser(String description, String user);
+    Optional<List<Product>> getByDescriptionAndUser(String description, String user, int bodega);
 }

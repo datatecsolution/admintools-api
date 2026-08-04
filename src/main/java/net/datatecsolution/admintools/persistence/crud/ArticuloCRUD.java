@@ -62,6 +62,14 @@ public interface ArticuloCRUD extends JpaRepository<Articulo, Integer> {
 
 
 
+    /**
+     * US-130 — la existencia se calcula en la BODEGA del vendedor, no en la
+     * vista articulo_view (que la tiene cableada a bodega 1). Asi el vendedor
+     * ve en la busqueda EXACTAMENTE el disponible que el guard del save va a
+     * validar (f_existencia_y_ordenes en su bodega) y desaparece el "veo 452
+     * pero al guardar hay 0" (caso AGUA OXIGENADA, Sharon 2026-08-03).
+     * El filtro estado=1 se agrega explicito: antes lo aportaba la vista.
+     */
     @Query(value ="Select p.codigo_articulo, " +
             " p.articulo, " +
             " p.codigo_marca, " +
@@ -70,9 +78,9 @@ public interface ArticuloCRUD extends JpaRepository<Articulo, Integer> {
             " p.precio_articulo, " +
             " p.tipo_articulo,  " +
             " p.estado, " +
-            " p.existencia " +
-            " FROM articulo_view p JOIN precios_articulos pp ON p.codigo_articulo = pp.codigo_articulo JOIN precios pr  ON pp.codigo_precio = pr.codigo_precio JOIN usuarios_precios up ON pr.codigo_precio = up.codigo_precio WHERE p.articulo LIKE %:descripcion% AND up.usuario = :userId GROUP BY p.codigo_articulo",nativeQuery = true)
-    List<Articulo> findByDescripcionAndUser(@Param("descripcion") String descripcion, @Param("userId") String userId);
+            " IFNULL(f_existencia_y_ordenes(p.codigo_articulo, :bodega), 0) AS existencia " +
+            " FROM articulo p JOIN precios_articulos pp ON p.codigo_articulo = pp.codigo_articulo JOIN precios pr  ON pp.codigo_precio = pr.codigo_precio JOIN usuarios_precios up ON pr.codigo_precio = up.codigo_precio WHERE p.articulo LIKE %:descripcion% AND p.estado = 1 AND up.usuario = :userId GROUP BY p.codigo_articulo",nativeQuery = true)
+    List<Articulo> findByDescripcionAndUser(@Param("descripcion") String descripcion, @Param("userId") String userId, @Param("bodega") int bodega);
 
 
 
