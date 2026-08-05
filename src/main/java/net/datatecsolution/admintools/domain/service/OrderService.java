@@ -7,7 +7,6 @@ import net.datatecsolution.admintools.domain.dto.StockConflict;
 import net.datatecsolution.admintools.domain.exception.InsufficientStockException;
 import net.datatecsolution.admintools.domain.repository.OrderRepository;
 import net.datatecsolution.admintools.persistence.crud.ArticuloCRUD;
-import net.datatecsolution.admintools.persistence.crud.CajaUsuarioCRUD;
 import net.datatecsolution.admintools.persistence.crud.ConfigUserFacturacionCRUD;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,31 +41,15 @@ public class OrderService {
     private ConfigUserFacturacionCRUD configUserFacturacionCRUD;
 
     @Autowired
-    private CajaUsuarioCRUD cajaUsuarioCRUD;
+    private CajaVendedorService cajaVendedorService;
 
     public List<Order> getAll() {
         return orderRepository.getAll();
     }
 
-    /** US-109: caja efectiva del vendedor — (codigo, codigo_bodega). */
-    record CajaVendedor(int codigo, int bodega) {}
-
-    /**
-     * US-109: misma resolución que el TenantInterceptor (cajas_usuarios
-     * por_defecto → fallback legacy usuario.codigo_caja). Empty si el usuario
-     * no tiene caja por ninguna vía — el caller decide el error (nunca caer
-     * en silencio a la caja 1, que era el bug del DEFAULT).
-     */
-    private Optional<CajaVendedor> resolverCajaVendedor(String user) {
-        List<Object[]> filas = cajaUsuarioCRUD.findCajaEfectiva(user);
-        if (filas.isEmpty()) {
-            filas = cajaUsuarioCRUD.findCajaLegacy(user);
-        }
-        return filas.stream().findFirst()
-                .map(fila -> new CajaVendedor(
-                        ((Number) fila[0]).intValue(),
-                        fila[1] == null ? 1 : ((Number) fila[1]).intValue()));
-    }
+    // US-130: la resolución de caja/bodega vive en CajaVendedorService,
+    // compartida con la búsqueda de productos para que el vendedor VEA el
+    // mismo disponible que este guard va a validar.
 
     // @Transactional: el lock pesimista de US-074 debe vivir en la MISMA
     // transaccion que el insert/update de la orden — se libera al commit.
@@ -90,7 +73,7 @@ public class OrderService {
         // f_existencia_y_ordenes caía siempre en la bodega de la caja 1,
         // fuera cual fuera la bodega del vendedor. Sin caja resoluble se
         // rechaza con mensaje claro (nunca default silencioso).
-        CajaVendedor caja = resolverCajaVendedor(user)
+        CajaVendedorService.CajaVendedor caja = cajaVendedorService.resolver(user)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
                         "El vendedor no tiene caja asignada; asignala en Usuarios para poder crear pedidos"));
 

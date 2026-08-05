@@ -17,6 +17,9 @@ public class ProductService {
     @Autowired
     private ProductRepository productRepository;
 
+    @Autowired
+    private CajaVendedorService cajaVendedorService;
+
     public List<Product> getAll() {
         return productRepository.getAll();
     }
@@ -67,8 +70,10 @@ public class ProductService {
 
     public Optional<List<Product>> getProductsPrecioUser(String description, String user) {
 
-        Optional <List<Product>>  articulos = productRepository.getByDescriptionAndUser(description,user);
+        // US-130: la busqueda muestra el disponible en la bodega de la caja
+        // del vendedor — el MISMO numero que el guard del save va a validar.
+        int bodega = cajaVendedorService.bodegaParaBusqueda(user);
 
-        return articulos;
+        return productRepository.getByDescriptionAndUser(description, user, bodega);
     }
 }

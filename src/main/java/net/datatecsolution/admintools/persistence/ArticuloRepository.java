@@ -101,9 +101,10 @@ public class ArticuloRepository implements ProductRepository {
     }
 
     @Override
-    public Optional<List<Product>> getByDescriptionAndUser(String description, String user) {
+    public Optional<List<Product>> getByDescriptionAndUser(String description, String user, int bodega) {
 
-        List<Articulo> articulos = articuloCRUD.findByDescripcionAndUser(description,user);
+        // US-130: la existencia viene calculada en la bodega del vendedor.
+        List<Articulo> articulos = articuloCRUD.findByDescripcionAndUser(description, user, bodega);
 
         // si verifica que el resultado de la busqueda tenga item para buscar los precios correctos
         if ( articulos.size() > 0 ) {
