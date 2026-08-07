@@ -4,10 +4,13 @@
 
 SET FOREIGN_KEY_CHECKS=0;
 SET SQL_MODE='NO_AUTO_VALUE_ON_ZERO';
--- Requerido para que CREATE FUNCTION funcione cuando el binlog
--- esta activo y las funciones no declaran caracteristicas SQL.
-SET @ADMIN_TOOLS_ORIG_LBT = @@GLOBAL.log_bin_trust_function_creators;
-SET GLOBAL log_bin_trust_function_creators = 1;
+-- US-138: antes aqui se hacia `SET GLOBAL log_bin_trust_function_creators=1`
+-- para poder crear funciones con el binlog activo. Ese SET exige SUPER /
+-- SYSTEM_VARIABLES_ADMIN, privilegios que el usuario de la API no tiene en
+-- los clientes, y rompia el provisioning de cajas nuevas (error 1227).
+-- La alternativa que no necesita privilegios globales: declarar la
+-- caracteristica SQL de la funcion (READS SQL DATA), que es justo lo que
+-- MySQL pide cuando el flag esta en 0.
 
 -- ============================================
 -- TABLAS (3)
@@ -83,6 +86,7 @@ CREATE TABLE `encabezado_factura` (
 
 DELIMITER $$
 CREATE FUNCTION `f_costo_factura`(p_numero_factura int(11)) RETURNS double(11,2)
+    READS SQL DATA
 BEGIN
 	return (SELECT
 
@@ -118,6 +122,4 @@ CREATE TRIGGER `validacion1` BEFORE INSERT ON `encabezado_factura` FOR EACH ROW 
   END IF;
 end$$
 DELIMITER ;
-
-SET GLOBAL log_bin_trust_function_creators = @ADMIN_TOOLS_ORIG_LBT;
 SET FOREIGN_KEY_CHECKS=1;

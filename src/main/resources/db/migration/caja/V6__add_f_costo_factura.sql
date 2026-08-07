@@ -1,12 +1,13 @@
 -- Agrega f_costo_factura en bases de caja que no la tenían
 -- (clientes existentes donde V1 fue baselineada sin ejecutar).
-SET @ADMIN_TOOLS_ORIG_LBT = @@GLOBAL.log_bin_trust_function_creators;
-SET GLOBAL log_bin_trust_function_creators = 1;
+-- US-138: sin `SET GLOBAL` (exige SUPER); la funcion declara su
+-- caracteristica SQL, que es lo que MySQL necesita con el binlog activo.
 
 DROP FUNCTION IF EXISTS `f_costo_factura`;
 
 DELIMITER $$
 CREATE FUNCTION `f_costo_factura`(p_numero_factura int(11)) RETURNS double(11,2)
+    READS SQL DATA
 BEGIN
 	return (SELECT
 	SUM(
@@ -22,5 +23,3 @@ WHERE
 	numero_factura= p_numero_factura) ;
 end$$
 DELIMITER ;
-
-SET GLOBAL log_bin_trust_function_creators = @ADMIN_TOOLS_ORIG_LBT;
