@@ -23,6 +23,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -60,7 +61,7 @@ class InventoryCtlTest {
                 new StockValuationResponse(5, "Coca Cola", 1,
                         new BigDecimal("10.00"), new BigDecimal("12.50"), new BigDecimal("125.00"),
                         new BigDecimal("2.00"), new BigDecimal("8.00"))));
-        when(inventoryReportService.getValuation(eq(1), any())).thenReturn(page);
+        when(inventoryReportService.getValuation(eq(1), nullable(String.class), any())).thenReturn(page);
 
         mockMvc.perform(get("/inventory/valuation").param("warehouse", "1"))
                 .andExpect(status().isOk())
@@ -85,7 +86,7 @@ class InventoryCtlTest {
         Page<LowStockResponse> page = new PageImpl<>(List.of(
                 new LowStockResponse(5, "Coca Cola", 1,
                         new BigDecimal("2.00"), new BigDecimal("20.00"), new BigDecimal("18.00"))));
-        when(inventoryReportService.getLowStock(eq(null), any())).thenReturn(page);
+        when(inventoryReportService.getLowStock(eq(null), nullable(String.class), any())).thenReturn(page);
 
         mockMvc.perform(get("/inventory/low-stock"))
                 .andExpect(status().isOk())

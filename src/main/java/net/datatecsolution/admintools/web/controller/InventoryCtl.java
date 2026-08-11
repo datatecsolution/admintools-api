@@ -77,10 +77,11 @@ public class InventoryCtl {
     @Operation(summary = "Valoracion de inventario por producto/bodega a costo promedio")
     public ResponseEntity<Page<StockValuationResponse>> getValuation(
             @RequestParam(name = "warehouse", required = false) Integer warehouse,
+            @RequestParam(name = "name", required = false) String name,
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(
-                inventoryReportService.getValuation(warehouse, PageRequest.of(page, size)));
+                inventoryReportService.getValuation(warehouse, name, PageRequest.of(page, size)));
     }
 
     @GetMapping("/valuation/summary")
@@ -96,9 +97,10 @@ public class InventoryCtl {
     @Operation(summary = "Alertas de stock minimo (existencia <= cantidad_minima)")
     public ResponseEntity<Page<LowStockResponse>> getLowStock(
             @RequestParam(name = "warehouse", required = false) Integer warehouse,
+            @RequestParam(name = "name", required = false) String name,
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
         return ResponseEntity.ok(
-                inventoryReportService.getLowStock(warehouse, PageRequest.of(page, size)));
+                inventoryReportService.getLowStock(warehouse, name, PageRequest.of(page, size)));
     }
 }

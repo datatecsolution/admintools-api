@@ -43,7 +43,18 @@ public class InventoryReportService {
 
     /** Valoracion por (articulo, bodega); {@code warehouse} null = todas. */
     public Page<StockValuationResponse> getValuation(Integer warehouse, Pageable pageable) {
-        return articuloKardexCRUD.findValuation(warehouse, pageable)
+        return getValuation(warehouse, null, pageable);
+    }
+
+    /**
+     * US-141 — valoracion con filtro por nombre. La pantalla de Inventario
+     * buscaba en el navegador sobre lo ya traido; al paginar de verdad, ese
+     * buscador solo veria la pagina actual, asi que el filtro tiene que
+     * resolverse en la base.
+     */
+    public Page<StockValuationResponse> getValuation(Integer warehouse, String name, Pageable pageable) {
+        String term = (name != null && !name.isBlank()) ? name.trim() : null;
+        return articuloKardexCRUD.findValuation(warehouse, term, pageable)
                 .map(v -> new StockValuationResponse(
                         v.getCodigoArticulo(), v.getArticulo(), v.getCodigoBodega(),
                         v.getCantidad(), v.getCostoUnitario(), v.getValorTotal(),
@@ -58,7 +69,13 @@ public class InventoryReportService {
 
     /** Alertas de stock minimo; {@code warehouse} null = todas las bodegas. */
     public Page<LowStockResponse> getLowStock(Integer warehouse, Pageable pageable) {
-        return articuloKardexCRUD.findLowStock(warehouse, pageable)
+        return getLowStock(warehouse, null, pageable);
+    }
+
+    /** US-141 — alertas con filtro por nombre (ver getValuation). */
+    public Page<LowStockResponse> getLowStock(Integer warehouse, String name, Pageable pageable) {
+        String term = (name != null && !name.isBlank()) ? name.trim() : null;
+        return articuloKardexCRUD.findLowStock(warehouse, term, pageable)
                 .map(v -> new LowStockResponse(
                         v.getCodigoArticulo(), v.getArticulo(), v.getCodigoBodega(),
                         v.getCantidad(), v.getCantidadMinima(), v.getFaltante()));

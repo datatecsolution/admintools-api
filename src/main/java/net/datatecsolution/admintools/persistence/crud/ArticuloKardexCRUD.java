@@ -60,12 +60,46 @@ public interface ArticuloKardexCRUD extends JpaRepository<ArticuloKardex, Intege
             " JOIN articulo_kardex ak ON ak.codigo_articulo = eab.codigo_articulo AND ak.codigo_bodega = eab.codigo_bodega " +
             " LEFT JOIN v_reservado_por_articulo r ON r.codigo_articulo = eab.codigo_articulo AND r.codigo_bodega = eab.codigo_bodega " +
             " WHERE (:warehouse IS NULL OR eab.codigo_bodega = :warehouse) " +
+            "   AND (:name IS NULL OR a.articulo LIKE CONCAT('%', :name, '%')) " +
             " ORDER BY a.articulo ASC",
             countQuery = "SELECT COUNT(*) FROM existencia_articulo_bodega eab " +
+            " JOIN articulo a ON a.codigo_articulo = eab.codigo_articulo " +
             " JOIN articulo_kardex ak ON ak.codigo_articulo = eab.codigo_articulo AND ak.codigo_bodega = eab.codigo_bodega " +
-            " WHERE (:warehouse IS NULL OR eab.codigo_bodega = :warehouse)",
+            " WHERE (:warehouse IS NULL OR eab.codigo_bodega = :warehouse) " +
+            "   AND (:name IS NULL OR a.articulo LIKE CONCAT('%', :name, '%'))",
             nativeQuery = true)
-    Page<StockValuationView> findValuation(@Param("warehouse") Integer warehouse, Pageable pageable);
+    Page<StockValuationView> findValuation(@Param("warehouse") Integer warehouse,
+                                           @Param("name") String name,
+                                           Pageable pageable);
+
+    /**
+     * US-141 — existencia de un CONJUNTO de articulos en una bodega.
+     *
+     * Misma aritmetica que findValuation (cantidad, costo promedio via
+     * f_precio_saldo_kardex, reservado y disponible), pero acotada por
+     * codigo_articulo IN (:ids): una query por pagina de productos en vez de
+     * traer la valoracion entera.
+     *
+     * Devuelve tambien cantidad_minima para que el consumidor calcule el
+     * nivel (ok/bajo/agotado) sin pedir low-stock aparte.
+     *
+     * Los articulos SIN fila en existencia_articulo_bodega no vienen en el
+     * resultado: el llamador los interpreta como existencia 0, que es lo que
+     * significan.
+     */
+    @Query(value = "SELECT eab.codigo_articulo AS codigoArticulo, " +
+            " eab.cantidad AS cantidad, " +
+            " IFNULL(f_precio_saldo_kardex(ak.codigo_kardex), 0) AS costoUnitario, " +
+            " IFNULL(r.reservado, 0) AS reservado, " +
+            " eab.cantidad - IFNULL(r.reservado, 0) AS disponible, " +
+            " IFNULL(ak.cantidad_minima, 0) AS cantidadMinima " +
+            " FROM existencia_articulo_bodega eab " +
+            " JOIN articulo_kardex ak ON ak.codigo_articulo = eab.codigo_articulo AND ak.codigo_bodega = eab.codigo_bodega " +
+            " LEFT JOIN v_reservado_por_articulo r ON r.codigo_articulo = eab.codigo_articulo AND r.codigo_bodega = eab.codigo_bodega " +
+            " WHERE eab.codigo_bodega = :warehouse AND eab.codigo_articulo IN (:ids)",
+            nativeQuery = true)
+    List<ProductStockView> findStockByProducts(@Param("warehouse") int warehouse,
+                                               @Param("ids") List<Integer> ids);
 
     /** US-112: reservado puntual de un articulo en una bodega (0 si no hay pedidos). */
     @Query(value = "SELECT IFNULL(reservado, 0) FROM v_reservado_por_articulo " +
@@ -99,11 +133,16 @@ public interface ArticuloKardexCRUD extends JpaRepository<ArticuloKardex, Intege
             " JOIN articulo_kardex ak ON ak.codigo_articulo = eab.codigo_articulo AND ak.codigo_bodega = eab.codigo_bodega " +
             " WHERE eab.cantidad <= ak.cantidad_minima " +
             "   AND (:warehouse IS NULL OR eab.codigo_bodega = :warehouse) " +
+            "   AND (:name IS NULL OR a.articulo LIKE CONCAT('%', :name, '%')) " +
             " ORDER BY (ak.cantidad_minima - eab.cantidad) DESC",
             countQuery = "SELECT COUNT(*) FROM existencia_articulo_bodega eab " +
+            " JOIN articulo a ON a.codigo_articulo = eab.codigo_articulo " +
             " JOIN articulo_kardex ak ON ak.codigo_articulo = eab.codigo_articulo AND ak.codigo_bodega = eab.codigo_bodega " +
             " WHERE eab.cantidad <= ak.cantidad_minima " +
-            "   AND (:warehouse IS NULL OR eab.codigo_bodega = :warehouse)",
+            "   AND (:warehouse IS NULL OR eab.codigo_bodega = :warehouse) " +
+            "   AND (:name IS NULL OR a.articulo LIKE CONCAT('%', :name, '%'))",
             nativeQuery = true)
-    Page<LowStockView> findLowStock(@Param("warehouse") Integer warehouse, Pageable pageable);
+    Page<LowStockView> findLowStock(@Param("warehouse") Integer warehouse,
+                                    @Param("name") String name,
+                                    Pageable pageable);
 }

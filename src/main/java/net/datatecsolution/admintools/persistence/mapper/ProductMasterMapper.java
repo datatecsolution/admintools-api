@@ -23,7 +23,10 @@ public interface ProductMasterMapper {
             @Mapping(source = "codArticulo",    target = "altCode"),
             @Mapping(source = "tipoArticulo",   target = "type"),
             @Mapping(source = "estado",         target = "active"),
-            @Mapping(target = "barcodes",       ignore = true)
+            @Mapping(target = "barcodes",       ignore = true),
+            // US-141: lo adjunta el service solo en el listado y solo si la
+            // peticion trae bodega; en alta/edicion no aplica.
+            @Mapping(target = "stock",          ignore = true)
     })
     ProductResponse toResponse(ArticuloMaster entity);
 
