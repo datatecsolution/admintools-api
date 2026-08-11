@@ -15,7 +15,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -68,23 +67,50 @@ public class ProductMasterService {
     }
 
     public Page<ProductResponse> search(String name, Integer category, int page, int size) {
-        // Sprint 4.5+ fix: orden por id DESC para que los productos recien
-        // creados aparezcan en la primera pagina. Antes MySQL devolvia el
-        // orden fisico (por PK clustered ascendente) y un articulo nuevo
-        // con id 319697 quedaba sepultado en la pagina ~31900.
-        Page<ArticuloMaster> result;
-        if (name != null && !name.isBlank()) {
-            // Buscador: por nombre OR código OR código de barra. El query nativo
-            // ya ordena (ORDER BY id DESC), por eso el Pageable va SIN sort.
-            result = crud.searchByNameCodeBarcode(name.trim(), PageRequest.of(page, size));
-        } else if (category != null) {
-            // Armado por categoría (= marca): TODOS los productos de esa categoría.
-            result = crud.findByCodigoMarca(category,
-                    PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "codigoArticulo")));
-        } else {
-            // Listado: orden por id DESC (productos recién creados primero).
-            result = crud.findAll(PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "codigoArticulo")));
+        return search(name, category, null, null, null, page, size);
+    }
+
+    /**
+     * US-140 — los cuatro filtros de la pantalla de Productos, COMBINABLES y
+     * resueltos en la base.
+     *
+     * Antes eran tres ramas excluyentes (texto / categoria / todo) y el texto
+     * ganaba: buscar "COCA" filtrando por ABARROTERIA traia tambien las de
+     * BEBIDAS. Estado y existencia ni siquiera llegaban aca — el POS los
+     * aplicaba sobre la pagina ya recibida, asi que con catalogos grandes
+     * mostraban resultados incompletos.
+     *
+     * El orden por id DESC se mantiene (Sprint 4.5+): los productos recien
+     * creados tienen que caer en la primera pagina. Va dentro del query
+     * nativo, por eso el Pageable viaja SIN sort.
+     *
+     * @param active null = todos, true = solo activos, false = solo inactivos
+     * @param stock  null = todos, "low" = bajo el minimo, "out" = agotado
+     * @param warehouse bodega sobre la que se evalua el stock; obligatoria si
+     *                  se filtra por existencia
+     */
+    public Page<ProductResponse> search(String name, Integer category, Boolean active,
+                                        String stock, Integer warehouse, int page, int size) {
+        String term = (name != null && !name.isBlank()) ? name.trim() : null;
+        String nivel = (stock != null && !stock.isBlank()) ? stock.trim().toLowerCase() : null;
+
+        // ResponseStatusException y no IllegalArgumentException: el
+        // GlobalExceptionHandler traduce la primera a 400 y la segunda caeria
+        // al generico, devolviendo un 500 que no describe el problema.
+        if (nivel != null && !nivel.equals("low") && !nivel.equals("out")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "stock debe ser 'low' (bajo el minimo) o 'out' (agotado)");
         }
+        if (nivel != null && warehouse == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Para filtrar por existencia hay que indicar la bodega (warehouse)");
+        }
+
+        Page<ArticuloMaster> result = crud.searchFiltered(
+                term, category,
+                active == null ? null : (active ? 1 : 0),
+                nivel, warehouse,
+                PageRequest.of(page, size));
 
         // El precio del catálogo es el Precio Público General (precios_articulos,
         // codigo_precio=1), NO la columna legacy articulo.precio_articulo (que es
