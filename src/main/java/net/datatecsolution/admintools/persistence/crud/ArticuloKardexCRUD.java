@@ -133,8 +133,10 @@ public interface ArticuloKardexCRUD extends JpaRepository<ArticuloKardex, Intege
             " JOIN articulo_kardex ak ON ak.codigo_articulo = eab.codigo_articulo AND ak.codigo_bodega = eab.codigo_bodega " +
             " WHERE eab.cantidad <= ak.cantidad_minima " +
             "   AND (:warehouse IS NULL OR eab.codigo_bodega = :warehouse) " +
+            "   AND (:name IS NULL OR a.articulo LIKE CONCAT('%', :name, '%')) " +
             " ORDER BY (ak.cantidad_minima - eab.cantidad) DESC",
             countQuery = "SELECT COUNT(*) FROM existencia_articulo_bodega eab " +
+            " JOIN articulo a ON a.codigo_articulo = eab.codigo_articulo " +
             " JOIN articulo_kardex ak ON ak.codigo_articulo = eab.codigo_articulo AND ak.codigo_bodega = eab.codigo_bodega " +
             " WHERE eab.cantidad <= ak.cantidad_minima " +
             "   AND (:warehouse IS NULL OR eab.codigo_bodega = :warehouse) " +
