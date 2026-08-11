@@ -83,7 +83,7 @@ class InventoryReportServiceTest {
         when(v.getCantidad()).thenReturn(new BigDecimal("10.00"));
         when(v.getCostoUnitario()).thenReturn(new BigDecimal("12.50"));
         when(v.getValorTotal()).thenReturn(new BigDecimal("125.00"));
-        when(articuloKardexCRUD.findValuation(eq(1), any(Pageable.class)))
+        when(articuloKardexCRUD.findValuation(eq(1), eq(null), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(v)));
 
         Page<StockValuationResponse> res = service().getValuation(1, page);
@@ -120,7 +120,7 @@ class InventoryReportServiceTest {
         when(v.getCantidad()).thenReturn(new BigDecimal("2.00"));
         when(v.getCantidadMinima()).thenReturn(new BigDecimal("20.00"));
         when(v.getFaltante()).thenReturn(new BigDecimal("18.00"));
-        when(articuloKardexCRUD.findLowStock(eq(null), any(Pageable.class)))
+        when(articuloKardexCRUD.findLowStock(eq(null), eq(null), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(v)));
 
         Page<LowStockResponse> res = service().getLowStock(null, page);

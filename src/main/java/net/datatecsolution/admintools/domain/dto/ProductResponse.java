@@ -21,6 +21,20 @@ public record ProductResponse(
         Integer type,
         Boolean active,
         List<String> barcodes,
-        Integer imageVersion
+        Integer imageVersion,
+        /**
+         * US-141 — existencia en la bodega consultada, o null si la peticion
+         * no indico bodega (o si es un alta/edicion, donde no aplica).
+         *
+         * Antes el listado no traia stock y el POS lo resolvia pidiendo la
+         * valoracion COMPLETA con size=1000: con catalogos mayores a ese
+         * tope, los articulos que quedaban afuera se mostraban en cero.
+         */
+        ProductStock stock
 ) {
+    /** Copia con el stock adjunto (el mapper construye el resto). */
+    public ProductResponse conStock(ProductStock s) {
+        return new ProductResponse(id, name, price, categoryId, taxId, altCode,
+                type, active, barcodes, imageVersion, s);
+    }
 }

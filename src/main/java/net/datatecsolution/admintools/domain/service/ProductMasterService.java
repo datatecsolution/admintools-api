@@ -3,9 +3,12 @@ package net.datatecsolution.admintools.domain.service;
 import jakarta.persistence.EntityNotFoundException;
 import net.datatecsolution.admintools.domain.dto.ProductRequest;
 import net.datatecsolution.admintools.domain.dto.ProductResponse;
+import net.datatecsolution.admintools.domain.dto.ProductStock;
 import net.datatecsolution.admintools.persistence.crud.ArticuloMasterCRUD;
 import net.datatecsolution.admintools.persistence.crud.CajaCRUD;
 import net.datatecsolution.admintools.persistence.crud.PreciosArticuloCRUD;
+import net.datatecsolution.admintools.persistence.crud.ArticuloKardexCRUD;
+import net.datatecsolution.admintools.persistence.crud.ProductStockView;
 import net.datatecsolution.admintools.persistence.entity.ArticuloMaster;
 import net.datatecsolution.admintools.persistence.entity.Caja;
 import net.datatecsolution.admintools.persistence.entity.PrecioArticulo;
@@ -56,6 +59,7 @@ public class ProductMasterService {
     @Autowired private ArticuloMasterCRUD crud;
     @Autowired private ProductMasterMapper mapper;
     @Autowired private PreciosArticuloCRUD preciosArticuloCRUD;
+    @Autowired private ArticuloKardexCRUD articuloKardexCRUD;
 
     /** JdbcTemplate sobre la BD común (codigos_articulos / compras / cross-DB ventas). */
     private final JdbcTemplate jdbc;
@@ -122,7 +126,35 @@ public class ProductMasterService {
         // Versión de imagen en bloque (US-079; solo el id_img, el blob nunca viaja acá).
         Map<Integer, Integer> images = imagesByProduct(
                 result.getContent().stream().map(ArticuloMaster::getCodigoArticulo).toList());
-        return result.map(e -> conPrecioPublico(mapper.toResponse(e), e, publico, barcodes, images));
+        // US-141: existencia de la bodega, tambien en bloque. Sin bodega no hay
+        // stock que adjuntar y el campo viaja en null.
+        Map<Integer, ProductStock> stocks = stockByProduct(warehouse,
+                result.getContent().stream().map(ArticuloMaster::getCodigoArticulo).toList());
+        return result.map(e -> {
+            ProductResponse r = conPrecioPublico(mapper.toResponse(e), e, publico, barcodes, images);
+            if (warehouse == null) {
+                return r;
+            }
+            // Un articulo sin fila de existencia no es un error: es stock cero.
+            return r.conStock(stocks.getOrDefault(e.getCodigoArticulo(), ProductStock.vacio()));
+        });
+    }
+
+    /**
+     * US-141 — existencia de los articulos de ESTA pagina en una bodega.
+     * Una sola query con IN, igual que precios/barcodes/imagenes.
+     */
+    private Map<Integer, ProductStock> stockByProduct(Integer warehouse, List<Integer> ids) {
+        Map<Integer, ProductStock> map = new HashMap<>();
+        if (warehouse == null || ids.isEmpty()) {
+            return map;
+        }
+        for (ProductStockView v : articuloKardexCRUD.findStockByProducts(warehouse, ids)) {
+            map.put(v.getCodigoArticulo(), ProductStock.de(
+                    v.getCantidad(), v.getReservado(), v.getDisponible(),
+                    v.getCostoUnitario(), v.getCantidadMinima()));
+        }
+        return map;
     }
 
     private Map<Integer, BigDecimal> preciosPublicoGeneral(List<ArticuloMaster> items) {
@@ -188,15 +220,17 @@ public class ProductMasterService {
             // fallback: legacy precio_articulo si el producto no tiene precio público asignado
             price = e.getPrecioArticulo() == null ? BigDecimal.ZERO : BigDecimal.valueOf(e.getPrecioArticulo());
         }
+        // stock = null: lo adjunta search() cuando la peticion trae bodega.
         return new ProductResponse(r.id(), r.name(), price, r.categoryId(),
                 r.taxId(), r.altCode(), r.type(), r.active(),
                 barcodes.getOrDefault(e.getCodigoArticulo(), List.of()),
-                images.get(e.getCodigoArticulo()));
+                images.get(e.getCodigoArticulo()), null);
     }
 
     private ProductResponse withBarcodes(ProductResponse r, List<String> barcodes, Integer imageVersion) {
+        // Alta/edicion: no hay bodega en el contexto, el stock no aplica.
         return new ProductResponse(r.id(), r.name(), r.price(), r.categoryId(),
-                r.taxId(), r.altCode(), r.type(), r.active(), barcodes, imageVersion);
+                r.taxId(), r.altCode(), r.type(), r.active(), barcodes, imageVersion, null);
     }
 
     @Transactional
