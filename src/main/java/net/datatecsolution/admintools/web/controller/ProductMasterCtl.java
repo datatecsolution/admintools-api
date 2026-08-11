@@ -41,14 +41,23 @@ public class ProductMasterCtl {
         this.service = service;
     }
 
+    /**
+     * US-140: los cuatro filtros son COMBINABLES. Omitir un parametro lo
+     * apaga, asi que las llamadas viejas (solo name, o solo category) siguen
+     * comportandose igual.
+     */
     @GetMapping
-    @Operation(summary = "Listar productos paginados; filtro por nombre/código/barra (name) o por categoría (category)")
+    @Operation(summary = "Listar productos paginados, combinando nombre/código/barra (name), "
+            + "categoría (category), estado (active) y existencia (stock=low|out, requiere warehouse)")
     public ResponseEntity<Page<ProductResponse>> search(
             @RequestParam(name = "name", required = false) String name,
             @RequestParam(name = "category", required = false) Integer category,
+            @RequestParam(name = "active", required = false) Boolean active,
+            @RequestParam(name = "stock", required = false) String stock,
+            @RequestParam(name = "warehouse", required = false) Integer warehouse,
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "20") int size) {
-        return ResponseEntity.ok(service.search(name, category, page, size));
+        return ResponseEntity.ok(service.search(name, category, active, stock, warehouse, page, size));
     }
 
     @PostMapping
