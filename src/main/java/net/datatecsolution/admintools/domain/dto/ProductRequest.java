@@ -43,6 +43,11 @@ public record ProductRequest(
         /** Códigos de barra del producto (tabla codigos_articulos, N por artículo).
          *  Soportan ceros a la izquierda (String). El primero es el principal.
          *  Opcional; null/omitido = no tocar los existentes en edición. */
-        List<String> barcodes
+        List<String> barcodes,
+
+        /** US-146: true = requiere pesarse en el POS (báscula, libras).
+         *  Opcional, mismo patrón que barcodes: null en POST = false;
+         *  null en PUT = no tocar (compatibilidad con POS viejo). */
+        Boolean sePesa
 ) {
 }

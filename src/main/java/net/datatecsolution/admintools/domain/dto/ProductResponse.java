@@ -22,6 +22,8 @@ public record ProductResponse(
         Boolean active,
         List<String> barcodes,
         Integer imageVersion,
+        /** US-146: true = requiere pesarse en el POS (báscula, libras). */
+        Boolean sePesa,
         /**
          * US-141 — existencia en la bodega consultada, o null si la peticion
          * no indico bodega (o si es un alta/edicion, donde no aplica).
@@ -35,6 +37,6 @@ public record ProductResponse(
     /** Copia con el stock adjunto (el mapper construye el resto). */
     public ProductResponse conStock(ProductStock s) {
         return new ProductResponse(id, name, price, categoryId, taxId, altCode,
-                type, active, barcodes, imageVersion, s);
+                type, active, barcodes, imageVersion, sePesa, s);
     }
 }

@@ -224,18 +224,24 @@ public class ProductMasterService {
         return new ProductResponse(r.id(), r.name(), price, r.categoryId(),
                 r.taxId(), r.altCode(), r.type(), r.active(),
                 barcodes.getOrDefault(e.getCodigoArticulo(), List.of()),
-                images.get(e.getCodigoArticulo()), null);
+                images.get(e.getCodigoArticulo()), r.sePesa(), null);
     }
 
     private ProductResponse withBarcodes(ProductResponse r, List<String> barcodes, Integer imageVersion) {
         // Alta/edicion: no hay bodega en el contexto, el stock no aplica.
         return new ProductResponse(r.id(), r.name(), r.price(), r.categoryId(),
-                r.taxId(), r.altCode(), r.type(), r.active(), barcodes, imageVersion, null);
+                r.taxId(), r.altCode(), r.type(), r.active(), barcodes, imageVersion,
+                r.sePesa(), null);
     }
 
     @Transactional
     public ProductResponse create(ProductRequest request) {
         ArticuloMaster entity = mapper.toEntity(request);
+        // US-146: null en POST = false (toEntity escribe null y pisaria el
+        // inicializador del entity; la columna es NOT NULL).
+        if (entity.getSePesa() == null) {
+            entity.setSePesa(Boolean.FALSE);
+        }
         ArticuloMaster saved = crud.save(entity);
         syncBarcodes(saved.getCodigoArticulo(), request.barcodes());
         return withBarcodes(mapper.toResponse(saved), barcodesOf(saved.getCodigoArticulo()),

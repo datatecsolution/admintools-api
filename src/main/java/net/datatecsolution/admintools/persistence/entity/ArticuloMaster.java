@@ -52,6 +52,13 @@ public class ArticuloMaster {
     @Column(name = "estado", nullable = false)
     private Boolean estado;
 
+    // US-146: 1 = el producto requiere pesarse en el POS (bascula); la
+    // cantidad de venta es el peso en libras. Columna V46 (repo Swing).
+    // Inicializado a FALSE porque la columna es NOT NULL y no todas las
+    // altas pasan por el mapper (importer).
+    @Column(name = "se_pesa", nullable = false)
+    private Boolean sePesa = Boolean.FALSE;
+
     public Integer getCodigoArticulo() { return codigoArticulo; }
     public void setCodigoArticulo(Integer codigoArticulo) { this.codigoArticulo = codigoArticulo; }
 
@@ -75,4 +82,7 @@ public class ArticuloMaster {
 
     public Boolean getEstado() { return estado; }
     public void setEstado(Boolean estado) { this.estado = estado; }
+
+    public Boolean getSePesa() { return sePesa; }
+    public void setSePesa(Boolean sePesa) { this.sePesa = sePesa; }
 }

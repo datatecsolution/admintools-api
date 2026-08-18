@@ -226,7 +226,7 @@ public class ProductImportService {
             if (ok) {
                 candidates.add(new Candidate(n,
                         new ProductRequest(nombre, precio, categoriaId, taxId,
-                                altCode, 1, activo, barcodes),
+                                altCode, 1, activo, barcodes, null),
                         nombre.toLowerCase(Locale.ROOT), barcodes));
             } else {
                 filasConError.add(n);
