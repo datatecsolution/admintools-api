@@ -169,6 +169,15 @@ public class OrdenRepository implements OrderRepository {
     private void aplicarPreciosUsuario(List<Orden> ordenes, String user) {
         for (Orden orden : ordenes) {
             for (DetalleOrden detalleOrden : orden.getDetalles()) {
+                // US-147: si el artículo fue borrado del catálogo DESPUÉS de
+                // guardarse la orden, la relación a articulo_view hidrata null.
+                // Antes esto era un NPE que tumbaba la lista COMPLETA con 500
+                // (Mariposas, orden 79 → "no aparece ninguna orden"). La línea
+                // huérfana se salta: la orden se lista igual y el detalle sale
+                // sin precios de usuario.
+                if (detalleOrden.getArticulo() == null) {
+                    continue;
+                }
                 List<PrecioArticulo> precios =
                         preciosArticuloCRUD.findPrecioUser(detalleOrden.getCodigoArt(), user);
                 if (precios != null) {
