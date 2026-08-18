@@ -308,8 +308,8 @@ public class ProductMasterService {
         }
         if (enUso(id)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "El producto está referenciado en facturas o compras; no se puede eliminar. "
-                            + "Deséchelo dando de baja (inactivar) en su lugar.");
+                    "El producto está referenciado en facturas, compras u órdenes pendientes; "
+                            + "no se puede eliminar. Deséchelo dando de baja (inactivar) en su lugar.");
         }
         // producto sin transacciones: limpiar filas hijas propias y borrar el master.
         jdbc.update("DELETE FROM codigos_articulos WHERE codigo_articulo = ?", id);
@@ -332,6 +332,20 @@ public class ProductMasterService {
      * fan-out sobre cada BD de caja.
      */
     private boolean enUso(int id) {
+        // US-147: pedidos/cotizaciones VIVOS (Activa=1 / Modificada=2) también
+        // referencian el producto. Antes esto no se validaba: se podía borrar
+        // un artículo con órdenes pendientes, la relación a articulo_view
+        // hidrataba null y la Lista de órdenes completa devolvía 500
+        // (Mariposas, orden 79). Las órdenes cerradas (facturada/enviada/
+        // anulada) no bloquean: sus líneas huérfanas las tolera el listado.
+        Integer enOrdenes = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM detalle_factura_temp d "
+                        + "JOIN encabezado_factura_temp e ON e.numero_factura = d.numero_factura "
+                        + "WHERE d.codigo_articulo = ? AND e.estado IN (1,2)",
+                Integer.class, id);
+        if (enOrdenes != null && enOrdenes > 0) {
+            return true;
+        }
         Integer compras = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM detalle_factura_compra WHERE codigo_articulo = ?",
                 Integer.class, id);
