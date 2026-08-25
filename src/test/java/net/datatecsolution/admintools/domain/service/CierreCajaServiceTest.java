@@ -1,7 +1,9 @@
 package net.datatecsolution.admintools.domain.service;
 
 import net.datatecsolution.admintools.config.TenantContext;
+import net.datatecsolution.admintools.domain.dto.AperturaCajaRequest;
 import net.datatecsolution.admintools.domain.dto.CashMovementRequest;
+import net.datatecsolution.admintools.domain.dto.CierreCajaRequest;
 import net.datatecsolution.admintools.domain.dto.CashMovementResponse;
 import net.datatecsolution.admintools.domain.dto.CierreDetalleResponse;
 import net.datatecsolution.admintools.domain.dto.CierreResumenResponse;
@@ -49,6 +51,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -476,5 +479,141 @@ class CierreCajaServiceTest {
         assertThat(c2.totalVentas()).isEqualByComparingTo("0");
         // el consolidado no se contamina
         assertThat(r.ventaEfectivo()).isEqualByComparingTo("300");
+    }
+
+    /* ------------------------------------------------------------------
+     * US-149 — apertura blindada + guardia de rango envenenado (incidente
+     * venecia 7175: fila previa no usable → factura_inicial=1 → el cierre
+     * sumó toda la historia de la caja).
+     * ------------------------------------------------------------------ */
+
+    private CierreCaja cierreCerrado() {
+        CierreCaja c = cierreAbierto();
+        c.setEstado(0);
+        c.setNoSalidaFinal(2);
+        c.setNoEntradaFinal(2);
+        c.setNoCobroFinal(2);
+        c.setNoPagoFinal(2);
+        return c;
+    }
+
+    private CierreFacturacion rangoPrevio(int ini, int fin) {
+        CierreFacturacion f = new CierreFacturacion();
+        f.setCodigoCierre(9);
+        f.setCodigoCaja(1);
+        f.setUsuario(USER);
+        f.setFacturaInicial(ini);
+        f.setFacturaFinal(fin);
+        return f;
+    }
+
+    private void montarApertura() {
+        when(cierreCRUD.findFirstByUsuarioOrderByIdCierreDesc(USER))
+                .thenReturn(Optional.of(cierreCerrado()));
+        when(cajaUsuarioCRUD.findByIdUsuario(USER)).thenReturn(List.of(
+                new CajaUsuario(1, USER, true)));
+        when(cierreCRUD.save(any(CierreCaja.class))).thenAnswer(inv -> {
+            CierreCaja c = inv.getArgument(0);
+            c.setIdCierre(11);
+            return c;
+        });
+    }
+
+    private int facturaInicialGuardada() {
+        ArgumentCaptor<CierreFacturacion> cap = ArgumentCaptor.forClass(CierreFacturacion.class);
+        verify(cierreFactCRUD).save(cap.capture());
+        return cap.getValue().getFacturaInicial();
+    }
+
+    @Test
+    void abrir_conTurnoAnteriorCompletado_continuaSuFinal() {
+        montarApertura();
+        when(cierreFactCRUD.findFirstByUsuarioAndCodigoCajaOrderByIdDesc(USER, 1))
+                .thenReturn(Optional.of(rangoPrevio(447497, 447572)));
+
+        service.abrir(new AperturaCajaRequest(new BigDecimal("5000")), USER);
+
+        assertThat(facturaInicialGuardada()).isEqualTo(447573);
+    }
+
+    @Test
+    void abrir_filaPreviaSinCompletar_usaUltimaFacturaEmitida() {
+        // la firma del incidente: el rango previo quedó con final=0, pero la
+        // caja tiene historia — el viejo orElse(1) registraba inicial=1
+        montarApertura();
+        when(cierreFactCRUD.findFirstByUsuarioAndCodigoCajaOrderByIdDesc(USER, 1))
+                .thenReturn(Optional.of(rangoPrevio(1, 0)));
+        when(jdbc.queryForList(argThat(s -> s != null && s.contains("admin_tools_caja_1")),
+                eq(Integer.class), any(Object[].class)))
+                .thenReturn(List.of(447615));
+
+        service.abrir(new AperturaCajaRequest(new BigDecimal("5000")), USER);
+
+        assertThat(facturaInicialGuardada()).isEqualTo(447616);
+    }
+
+    @Test
+    void abrir_sinFilaPreviaConHistoria_usaUltimaFacturaEmitida() {
+        montarApertura();
+        when(cierreFactCRUD.findFirstByUsuarioAndCodigoCajaOrderByIdDesc(USER, 1))
+                .thenReturn(Optional.empty());
+        when(jdbc.queryForList(argThat(s -> s != null && s.contains("admin_tools_caja_1")),
+                eq(Integer.class), any(Object[].class)))
+                .thenReturn(List.of(447615));
+
+        service.abrir(new AperturaCajaRequest(new BigDecimal("5000")), USER);
+
+        assertThat(facturaInicialGuardada()).isEqualTo(447616);
+    }
+
+    @Test
+    void abrir_primeraVezReal_empiezaEnUno() {
+        montarApertura();
+        when(cierreFactCRUD.findFirstByUsuarioAndCodigoCajaOrderByIdDesc(USER, 1))
+                .thenReturn(Optional.empty());
+        // sin facturas: el default del setUp devuelve lista vacía
+
+        service.abrir(new AperturaCajaRequest(new BigDecimal("5000")), USER);
+
+        assertThat(facturaInicialGuardada()).isEqualTo(1);
+    }
+
+    @Test
+    void cerrar_rangoEnvenenado_409SinGuardarNada() {
+        when(cajaUsuarioCRUD.findByIdUsuario(USER)).thenReturn(List.of(
+                new CajaUsuario(1, USER, true)));
+        when(cierreFactCRUD.findFirstByUsuarioAndCodigoCierreAndCodigoCaja(USER, 10, 1))
+                .thenReturn(Optional.of(cf(1, 1)));
+        when(cierreFactCRUD.findFirstByUsuarioAndCodigoCajaAndCodigoCierreNotAndFacturaFinalGreaterThanOrderByIdDesc(
+                USER, 1, 10, 0))
+                .thenReturn(Optional.of(rangoPrevio(447497, 447572)));
+
+        assertThatThrownBy(() -> service.cerrar(
+                new CierreCajaRequest(new BigDecimal("6379"), null, null, null), USER))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> {
+                    assertThat(((ResponseStatusException) ex).getStatusCode())
+                            .isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(ex.getMessage()).contains("inválido");
+                });
+        verify(cierreCRUD, never()).save(any(CierreCaja.class));
+    }
+
+    @Test
+    void cerrar_primeraVezReal_noDisparaLaGuardia() {
+        // inicial=1 sin ningún turno completado antes es legítimo: la guardia
+        // no debe bloquear; acá falla después por "no hay facturas" (rango vacío)
+        when(cajaUsuarioCRUD.findByIdUsuario(USER)).thenReturn(List.of(
+                new CajaUsuario(1, USER, true)));
+        when(cierreFactCRUD.findFirstByUsuarioAndCodigoCierreAndCodigoCaja(USER, 10, 1))
+                .thenReturn(Optional.of(cf(1, 1)));
+        when(cierreFactCRUD.findFirstByUsuarioAndCodigoCajaAndCodigoCierreNotAndFacturaFinalGreaterThanOrderByIdDesc(
+                USER, 1, 10, 0))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.cerrar(
+                new CierreCajaRequest(new BigDecimal("0"), null, null, null), USER))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(ex.getMessage()).contains("No hay facturas"));
     }
 }

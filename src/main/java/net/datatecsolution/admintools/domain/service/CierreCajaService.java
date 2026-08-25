@@ -138,10 +138,15 @@ public class CierreCajaService {
             nuevo = cierreCRUD.save(nuevo);
 
             for (Integer codigoCaja : cajas) {
+                // US-149: el rango continua el ultimo turno COMPLETADO; sin uno,
+                // continua la ultima factura emitida. El viejo orElse(1) ciego
+                // hacia que el cierre sumara toda la historia de la caja cuando
+                // la fila previa faltaba o quedo sin completar (venecia 7175).
                 int facturaInicial = cierreFactCRUD
                         .findFirstByUsuarioAndCodigoCajaOrderByIdDesc(user, codigoCaja)
+                        .filter(prev -> prev.getFacturaFinal() != null && prev.getFacturaFinal() > 0)
                         .map(prev -> prev.getFacturaFinal() + 1)
-                        .orElse(1);
+                        .orElseGet(() -> ultimaFacturaDelUsuario(codigoCaja, user) + 1);
                 CierreFacturacion cf = new CierreFacturacion();
                 cf.setCodigoCierre(nuevo.getIdCierre());
                 cf.setCodigoCaja(codigoCaja);
@@ -261,6 +266,19 @@ public class CierreCajaService {
                         .findFirstByUsuarioAndCodigoCierreAndCodigoCaja(user, cierre.getIdCierre(), codigoCaja)
                         .orElse(null);
                 if (cf != null) {
+                    // US-149: rango envenenado en la apertura (inicial <= 1 con
+                    // turnos completados previos) — cerrar sumaria toda la
+                    // historia de la caja (venecia 7175)
+                    boolean hayTurnoAnteriorCompletado = cierreFactCRUD
+                            .findFirstByUsuarioAndCodigoCajaAndCodigoCierreNotAndFacturaFinalGreaterThanOrderByIdDesc(
+                                    user, codigoCaja, cierre.getIdCierre(), 0)
+                            .isPresent();
+                    if (cf.getFacturaInicial() != null && cf.getFacturaInicial() <= 1
+                            && hayTurnoAnteriorCompletado) {
+                        throw new ResponseStatusException(HttpStatus.CONFLICT,
+                                "El rango de facturas del turno es inválido en la caja "
+                                        + caja.getDescripcion() + "; contacte a soporte.");
+                    }
                     Integer n = commonJdbc.queryForObject(
                             "SELECT count(*) FROM " + db + ".encabezado_factura WHERE numero_factura >= ? AND usuario = ?",
                             Integer.class, cf.getFacturaInicial(), user);
@@ -274,7 +292,13 @@ public class CierreCajaService {
                         repara.setCodigoCierre(cierre.getIdCierre());
                         repara.setCodigoCaja(codigoCaja);
                         repara.setUsuario(user);
-                        repara.setFacturaInicial(0);
+                        // US-149: la fila reparada continua el ultimo turno
+                        // completado; con 0 el cierre sumaria toda la historia
+                        repara.setFacturaInicial(cierreFactCRUD
+                                .findFirstByUsuarioAndCodigoCajaAndCodigoCierreNotAndFacturaFinalGreaterThanOrderByIdDesc(
+                                        user, codigoCaja, cierre.getIdCierre(), 0)
+                                .map(prev -> prev.getFacturaFinal() + 1)
+                                .orElse(1));
                         repara.setFacturaFinal(0);
                         cierreFactCRUD.save(repara);
                     }
@@ -597,6 +621,17 @@ public class CierreCajaService {
                         ? List.of(u.getCodigoCaja())
                         : List.<Integer>of())
                 .orElseGet(List::of);
+    }
+
+    /** US-149: ultima factura emitida por el usuario en la caja (0 si no hay). */
+    private int ultimaFacturaDelUsuario(Integer codigoCaja, String user) {
+        Caja caja = cajaCRUD.findById(codigoCaja).orElse(null);
+        if (caja == null) return 0;
+        List<Integer> ultima = commonJdbc.queryForList(
+                "SELECT numero_factura FROM " + safeDb(caja.getNombreDb()) + ".encabezado_factura "
+                        + "WHERE usuario = ? ORDER BY numero_factura DESC LIMIT 1",
+                Integer.class, user);
+        return ultima.isEmpty() ? 0 : ultima.get(0);
     }
 
     private CierreCaja requireAbierto(String user) {
