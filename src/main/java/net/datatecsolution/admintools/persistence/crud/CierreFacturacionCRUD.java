@@ -18,5 +18,13 @@ public interface CierreFacturacionCRUD extends JpaRepository<CierreFacturacion, 
     /** Rango de una caja dentro de un cierre especifico. */
     Optional<CierreFacturacion> findFirstByUsuarioAndCodigoCierreAndCodigoCaja(String usuario, Integer codigoCierre, Integer codigoCaja);
 
+    /**
+     * US-149: ultimo rango COMPLETADO (factura_final > 0) para caja+usuario,
+     * excluyendo un cierre (el turno en curso). Para detectar aperturas que
+     * quedaron con factura_inicial envenenada.
+     */
+    Optional<CierreFacturacion> findFirstByUsuarioAndCodigoCajaAndCodigoCierreNotAndFacturaFinalGreaterThanOrderByIdDesc(
+            String usuario, Integer codigoCaja, Integer codigoCierre, Integer facturaFinal);
+
     List<CierreFacturacion> findByCodigoCierre(Integer codigoCierre);
 }
