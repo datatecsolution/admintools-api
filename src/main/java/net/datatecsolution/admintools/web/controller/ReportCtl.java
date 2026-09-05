@@ -3,11 +3,13 @@ package net.datatecsolution.admintools.web.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import net.datatecsolution.admintools.domain.dto.AbcReportResponse;
+import net.datatecsolution.admintools.domain.dto.CategorySalesResponse;
 import net.datatecsolution.admintools.domain.dto.DailyReportResponse;
 import net.datatecsolution.admintools.domain.dto.PurchaseSuggestionItem;
 import net.datatecsolution.admintools.domain.dto.PurchaseSuggestionsResponse;
 import net.datatecsolution.admintools.domain.dto.RotationReportResponse;
 import net.datatecsolution.admintools.domain.service.AbcAnalysisService;
+import net.datatecsolution.admintools.domain.service.CategorySalesService;
 import net.datatecsolution.admintools.domain.service.DailyReportService;
 import net.datatecsolution.admintools.domain.service.PurchaseSuggestionService;
 import net.datatecsolution.admintools.domain.service.RotationReportService;
@@ -35,17 +37,20 @@ public class ReportCtl {
     private final AbcAnalysisService abcAnalysisService;
     private final RotationReportService rotationReportService;
     private final PurchaseSuggestionService purchaseSuggestionService;
+    private final CategorySalesService categorySalesService;
 
     @Value("${app.timezone:America/Tegucigalpa}")
     private String timezoneId;
 
     public ReportCtl(DailyReportService dailyReportService, AbcAnalysisService abcAnalysisService,
                      RotationReportService rotationReportService,
-                     PurchaseSuggestionService purchaseSuggestionService) {
+                     PurchaseSuggestionService purchaseSuggestionService,
+                     CategorySalesService categorySalesService) {
         this.dailyReportService = dailyReportService;
         this.abcAnalysisService = abcAnalysisService;
         this.rotationReportService = rotationReportService;
         this.purchaseSuggestionService = purchaseSuggestionService;
+        this.categorySalesService = categorySalesService;
     }
 
     /** date default = HOY en la zona del negocio (no la del server/JVM). */
@@ -141,6 +146,23 @@ public class ReportCtl {
                     .body(toCsv(r));
         }
         return ResponseEntity.ok(r);
+    }
+
+    /**
+     * US-106 — comparativo trimestral por categoría con proyección de cierre.
+     * Default: desde el año pasado (8 trimestres máx) hasta hoy (zona del
+     * negocio), todas las cajas.
+     */
+    @GetMapping("/category-sales")
+    @PreAuthorize("hasAnyRole('ADMIN','INVENTORY')")
+    @Operation(summary = "Ventas por categoría (marcas) por trimestre, con proyección de los trimestres restantes del año (factor interanual YTD / run-rate / repetir temporada)")
+    public ResponseEntity<CategorySalesResponse> categorySales(
+            @RequestParam(name = "fromYear", required = false) Integer fromYear,
+            @RequestParam(name = "caja", required = false) Integer caja,
+            @RequestParam(name = "excludeCategories", required = false) java.util.List<String> excludeCategories) {
+        LocalDate hasta = LocalDate.now(ZoneId.of(timezoneId));
+        int desde = fromYear != null ? fromYear : hasta.getYear() - 1;
+        return ResponseEntity.ok(categorySalesService.categorySales(desde, hasta, caja, excludeCategories));
     }
 
     private String toCsv(PurchaseSuggestionsResponse r) {
