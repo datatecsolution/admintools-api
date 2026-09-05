@@ -2,7 +2,9 @@ package net.datatecsolution.admintools.web.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import net.datatecsolution.admintools.domain.dto.AbcReportResponse;
 import net.datatecsolution.admintools.domain.dto.DailyReportResponse;
+import net.datatecsolution.admintools.domain.service.AbcAnalysisService;
 import net.datatecsolution.admintools.domain.service.DailyReportService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -25,12 +27,14 @@ import java.time.ZoneId;
 public class ReportCtl {
 
     private final DailyReportService dailyReportService;
+    private final AbcAnalysisService abcAnalysisService;
 
     @Value("${app.timezone:America/Tegucigalpa}")
     private String timezoneId;
 
-    public ReportCtl(DailyReportService dailyReportService) {
+    public ReportCtl(DailyReportService dailyReportService, AbcAnalysisService abcAnalysisService) {
         this.dailyReportService = dailyReportService;
+        this.abcAnalysisService = abcAnalysisService;
     }
 
     /** date default = HOY en la zona del negocio (no la del server/JVM). */
@@ -43,5 +47,28 @@ public class ReportCtl {
             @RequestParam(name = "caja", required = false) Integer caja) {
         LocalDate day = date != null ? date : LocalDate.now(ZoneId.of(timezoneId));
         return ResponseEntity.ok(dailyReportService.daily(day, caja));
+    }
+
+    /**
+     * US-062 — análisis ABC. Defaults: último año móvil hasta hoy (zona del
+     * negocio), todas las cajas, cortes 80/95, sin límite de filas.
+     */
+    @GetMapping("/abc")
+    @PreAuthorize("hasAnyRole('ADMIN','INVENTORY')")
+    @Operation(summary = "Análisis ABC de productos: venta por artículo con participación acumulada y clase A/B/C, consolidando cajas")
+    public ResponseEntity<AbcReportResponse> abc(
+            @RequestParam(name = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(name = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(name = "caja", required = false) Integer caja,
+            @RequestParam(name = "excludeCategories", required = false) java.util.List<String> excludeCategories,
+            @RequestParam(name = "umbralA", required = false, defaultValue = "80") java.math.BigDecimal umbralA,
+            @RequestParam(name = "umbralB", required = false, defaultValue = "95") java.math.BigDecimal umbralB,
+            @RequestParam(name = "limit", required = false) Integer limit) {
+        LocalDate hasta = to != null ? to : LocalDate.now(ZoneId.of(timezoneId));
+        LocalDate desde = from != null ? from : hasta.minusYears(1);
+        return ResponseEntity.ok(abcAnalysisService.abc(desde, hasta, caja,
+                excludeCategories, umbralA, umbralB, limit));
     }
 }
