@@ -81,6 +81,19 @@ public class OrderService {
                 order.getOrderId(), user, caja.codigo(), caja.bodega());
 
         if (order.getOrderId() == null) {
+            // US-150: idempotencia. Si la app manda un clientRef que ya existe,
+            // este POST es un REINTENTO de una orden ya creada (respuesta
+            // perdida en la red móvil → "Load failed" → el vendedor re-guarda).
+            // Se devuelve la orden existente sin crear otra y SIN re-validar
+            // stock: la validación ya corrió cuando la orden se creó.
+            if (order.getClientRef() != null && !order.getClientRef().isBlank()) {
+                Optional<Order> existing = orderRepository.findByClientRef(order.getClientRef());
+                if (existing.isPresent()) {
+                    log.info("Orden duplicada evitada por clientRef={} (orden existente {})",
+                            order.getClientRef(), existing.get().getOrderId());
+                    return existing.get();
+                }
+            }
             // INSERT
             order.setActive(1);
         } else {
@@ -181,5 +194,14 @@ public class OrderService {
 
     public Optional<Order> getOrderUser(int orderId, String user) {
         return orderRepository.getOrderUser(orderId, user);
+    }
+
+    /**
+     * US-150: usado por el controller para resolver la carrera de dos POST
+     * simultáneos con el mismo clientRef — el perdedor del UNIQUE relee la
+     * orden que ganó (transacción nueva, la del save ya rodó atrás).
+     */
+    public Optional<Order> findByClientRef(String clientRef) {
+        return orderRepository.findByClientRef(clientRef);
     }
 }

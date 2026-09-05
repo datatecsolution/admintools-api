@@ -1,9 +1,43 @@
 # Bug · App de pedidos — Órdenes duplicadas al guardar desde el celular ("Load failed")
 
-> **Estado:** Diagnosticado, sin cambios aplicados — a la espera de decisión del cliente.
-> **Fecha de diagnóstico:** 2026-06-08
+> **Estado:** ✅ **CORREGIDO (US-150, 2026-09-05)** — Opción A (`clientRef`) + timeout y aviso en la app.
+> Validado E2E en local (doble POST con el mismo ref → una sola orden). **Pendiente: deploy a producción.**
+> **Fecha de diagnóstico:** 2026-06-08 · **Fecha del fix:** 2026-09-05
 > **Etiquetas:** Bug · Producción · App de pedidos · Prioridad media-alta
-> **Componentes:** `at-ordenes-ventas` (app de pedidos) · `admintools-api` (`/orders/save`)
+> **Componentes:** `at-ordenes-ventas` (app de pedidos) · `admintools-api` (`/orders/save`) · `adminTools` (V48)
+
+## Actualización 2026-09-04 — impacto real medido en producción
+
+La investigación del caso "facturas 91 y 332 de caja_yisell" (Sharon) confirmó que
+los duplicados **sí llegan a doble factura**: cada copia de la orden se factura por
+separado, a veces en **cajas distintas** (indetectable para el cajero). Medido con
+huella exacta de líneas (mismo cliente + mismos artículos/cantidades, <24 h):
+
+- **jun: 30 pares · jul: 6 · ago: 11 (6 con ambas copias facturadas) · sep (2 días): 2**
+- **6 pares de facturas duplicadas AMBAS ACTIVAS** al 2026-09-04 (~L 5,423):
+  clientes 984 (caja_4 37704+37752), 4273 (caja_7 390+428), 4290 (caja_7 182+219),
+  626 (caja_2 262803+262817), 856 (caja_4 35888 + caja_2 261342), 1619 (caja_4
+  36653 + caja_2 262254). Otros 4 pares fueron anulados a mano por el personal.
+- 8 vendedores distintos afectados → sistémico, no error de digitación.
+- El patrón "re-envío 1-2 h después" NO es una cola offline (no existe tal código);
+  es el carrito que sobrevive en pantalla tras el fallo y se re-guarda.
+- Vector secundario detectado: el retry automático post-401 de `apiClient.js`
+  re-enviaba el POST completo (quedó inocuo con el `clientRef`).
+
+## Fix aplicado (US-150)
+
+- **BD (adminTools, V48):** `encabezado_factura_temp.client_ref VARCHAR(36) NULL`
+  + UNIQUE. Filas históricas y Swing/POS no afectados.
+- **API:** si el `clientRef` ya existe, `/orders/save` devuelve la orden existente
+  sin crear otra (y sin re-validar stock); la carrera de dos POST simultáneos la
+  cierra el UNIQUE (el perdedor relee y devuelve la ganadora). Suite 213/213.
+- **App:** `clientRef` (UUID) generado al primer intento y conservado entre
+  reintentos; timeout de 20 s con AbortController; aviso claro tras fallo de red
+  ("tocá Guardar de nuevo: no se va a duplicar").
+- **Orden de deploy:** V48 debe estar aplicada ANTES de desplegar la API nueva
+  (ddl-auto=validate). La app vieja sin `clientRef` sigue funcionando igual.
+- **Remediación pendiente:** confirmar con el cliente los 6 pares activos y anular
+  la copia por el flujo normal de anulación (backup previo).
 
 ---
 

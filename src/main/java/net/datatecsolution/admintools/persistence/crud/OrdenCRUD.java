@@ -17,6 +17,9 @@ public interface OrdenCRUD extends CrudRepository<Orden,Integer> {
 
     List<Orden> findByClienteIdOrderByFechaAsc(int idCliente);
 
+    // US-150: lookup de idempotencia — la columna tiene UNIQUE (V48).
+    java.util.Optional<Orden> findByClientRef(String clientRef);
+
     List<Orden> getAllByOrderByFechaDesc();
     List<Orden> findByFechaOrderByFechaDesc(LocalDate fecha);
 

@@ -20,6 +20,9 @@ public interface OrderRepository {
 
     Optional<Order> getOrderUser(int orderId,String user);
 
+    /** US-150: orden ya creada con esta clave de idempotencia, si existe. */
+    Optional<Order> findByClientRef(String clientRef);
+
     /** Borrado lógico: marca la orden como anulada (estado 5), conserva la fila. */
     void delete(int orderId);
 

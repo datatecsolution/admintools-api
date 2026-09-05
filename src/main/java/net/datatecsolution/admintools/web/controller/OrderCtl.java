@@ -44,13 +44,27 @@ public class OrderCtl {
     public ResponseEntity<Object> save(@RequestBody Order order, java.security.Principal principal) {
         String user = principal.getName();
 
-        // US-049: sin try/catch propio — se deja subir todo al
-        // GlobalExceptionHandler, que ya mapea ResponseStatusException /
-        // InsufficientStockException (409) a su status y oculta el detalle
-        // interno de cualquier excepción no controlada (antes este catch-all
-        // devolvía e.getMessage() al cliente, filtrando internals).
-        Order savedOrder = orderService.save(order, user);
-        return new ResponseEntity<>(savedOrder, HttpStatus.CREATED);
+        // US-049: sin catch-all propio — todo sube al GlobalExceptionHandler,
+        // que ya mapea ResponseStatusException / InsufficientStockException
+        // (409) a su status y oculta el detalle interno del resto.
+        //
+        // US-150 (única excepción puntual): si dos POST con el MISMO clientRef
+        // corren en paralelo, el chequeo del service no ve al otro (aún sin
+        // commit) y el perdedor revienta contra el UNIQUE de client_ref. Ese
+        // caso ES un reintento: se relee la orden ganadora (transacción nueva,
+        // la del save ya rodó atrás) y se devuelve como éxito.
+        try {
+            Order savedOrder = orderService.save(order, user);
+            return new ResponseEntity<>(savedOrder, HttpStatus.CREATED);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            if (order.getClientRef() != null && !order.getClientRef().isBlank()) {
+                java.util.Optional<Order> existing = orderService.findByClientRef(order.getClientRef());
+                if (existing.isPresent()) {
+                    return new ResponseEntity<>(existing.get(), HttpStatus.OK);
+                }
+            }
+            throw e;
+        }
     }
 
     /**

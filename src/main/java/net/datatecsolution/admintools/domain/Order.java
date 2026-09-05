@@ -107,6 +107,14 @@ public class Order {
     public void setUser(String user) {
         this.user = user;
     }
+
+    public String getClientRef() {
+        return clientRef;
+    }
+
+    public void setClientRef(String clientRef) {
+        this.clientRef = clientRef;
+    }
     public Integer getCustomerId() {
         return customerId;
     }
@@ -190,6 +198,10 @@ public class Order {
     private BigDecimal isvOther;
     private BigDecimal totalTaxs18;
     private String user;
+    // US-150: clave de idempotencia opcional (UUID de la app de pedidos).
+    // WRITE_ONLY: se acepta en el request y no se emite en el response.
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    private String clientRef;
     private String obser;
     private Integer customerId;
     private Customer customer;
