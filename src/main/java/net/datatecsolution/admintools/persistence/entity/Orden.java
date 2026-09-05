@@ -85,6 +85,12 @@ public class Orden {
 	@Column(name = "usuario")
 	private String usuario;
 
+	// US-150: clave de idempotencia generada por la app de pedidos (UUID).
+	// NULL para el Swing/POS y las filas históricas; UNIQUE en BD (V48).
+	@Column(name = "client_ref")
+	@JsonIgnore
+	private String clientRef;
+
 	@Column(name = "pago")
 	@JsonIgnore
 	private BigDecimal pago=new BigDecimal(0);
@@ -410,6 +416,14 @@ public class Orden {
 
 	public void setUsuario(String usuario) {
 		this.usuario = usuario;
+	}
+
+	public String getClientRef() {
+		return clientRef;
+	}
+
+	public void setClientRef(String clientRef) {
+		this.clientRef = clientRef;
 	}
 
 	public BigDecimal getPago() {

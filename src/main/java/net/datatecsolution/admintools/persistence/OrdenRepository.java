@@ -200,6 +200,12 @@ public class OrdenRepository implements OrderRepository {
     }
 
     @Override
+    public Optional<Order> findByClientRef(String clientRef) {
+        // US-150: lookup de idempotencia (client_ref es UNIQUE, V48).
+        return ordenCRUD.findByClientRef(clientRef).map(mapper::toOrder);
+    }
+
+    @Override
     public void delete(int orderId) {
         // Borrado LÓGICO (estado 5 = anulada): NO se elimina la fila — conserva
         // la traza, fiel al Swing. getByToday filtra estado<3, así que la orden
